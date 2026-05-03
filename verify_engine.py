@@ -1964,7 +1964,7 @@ def run_tests():
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         check_true("config has no cross_device intent", "cross_device" not in config.get("intents", {}))
-        check_true("config has version", config.get("version") == "3.3.0")
+        check_true("config has version", config.get("version") == "3.3.1")
         check_true("config has intents", len(config.get("intents", {})) > 0)
         check_true("config has cross_device_keywords", len(config.get("cross_device_keywords", [])) > 0)
         check_true("config has unknown_fallback", "template" in config.get("unknown_fallback", {}))

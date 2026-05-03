@@ -2,7 +2,7 @@
 
 所有版本的更新记录。
 
-## v3.4.0 (2026-05-04)
+## v3.3.1 (2026-05-04)
 
 ### ✨ 新增
 
@@ -41,7 +41,7 @@
 - **nlu_config.json 结构升级**
   - 新增 batch_learn 配置区域（enabled, threshold, max_pending, learn_request_timeout_seconds, local_fallback_enabled, local_fallback_path）
   - 新增 route_cache 配置区域（enabled, ttl_seconds, max_size, similarity_threshold）
-  - 版本号升级至 3.4.0
+    - 版本号升级至 3.3.1
 
 - **sie_self_evolve.py 重构**
   - 新增 RouteCache 类（LRU 缓存 + 相似度匹配）
@@ -60,7 +60,7 @@
 
 ### 📝 文档
 
-- 更新 skill.md 至 v3.4.0，新增路由缓存、批量学习、本地兜底章节
+- 更新 skill.md 至 v3.3.1，新增路由缓存、批量学习、本地兜底章节
 - 更新 CHANGELOG.md
 
 ---

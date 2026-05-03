@@ -4,7 +4,7 @@
 
 ## 版本
 
-当前版本：v3.3.0
+当前版本：v3.3.1
 
 ## 核心设计原则
 
@@ -208,7 +208,7 @@ score = α × capability_match + β × load_factor + γ × proximity
 
 ```json
 {
-  "version": "3.3.0",
+    "version": "3.3.1",
   "description": "SIE NLU 配置 — 意图识别关键词表",
   "intents": {
     "<intent_name>": {

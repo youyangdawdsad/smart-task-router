@@ -1,6 +1,6 @@
 {
-  "version": "3.4.0",
-  "description": "SIE NLU 配置 — 意图识别关键词表（v3.4.0 批量学习 + 路由缓存）",
+    "version": "3.3.1",
+    "description": "SIE NLU 配置 — 意图识别关键词表（v3.3.1 批量学习 + 路由缓存）",
   "intents": {
     "message_send": {
       "description": "发送短信",

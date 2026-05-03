@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SIE Self-Evolution Module — 自我进化架构 (v3.4.0)
+SIE Self-Evolution Module — 自我进化架构 (v3.3.1)
 ==================================================
 
 核心能力：
@@ -107,7 +107,7 @@ class LearningLogger:
 
 
 # ============================================================
-#  Module: LocalFallbackLogger — 本地兜底日志 (v3.4.0)
+#  Module: LocalFallbackLogger — 本地兜底日志 (v3.3.1)
 # ============================================================
 
 class LocalFallbackLogger:
@@ -206,7 +206,7 @@ class LocalFallbackLogger:
 
 
 # ============================================================
-#  Module: RouteCache — 路由结果 LRU 缓存 (v3.4.0)
+#  Module: RouteCache — 路由结果 LRU 缓存 (v3.3.1)
 # ============================================================
 
 class RouteCache:
@@ -320,12 +320,12 @@ class RouteCache:
 
 
 # ============================================================
-#  Module: LearnProtocol — 知识请教协议 (v3.4.0 批量模式)
+#  Module: LearnProtocol — 知识请教协议 (v3.3.1 批量模式)
 # ============================================================
 
 class LearnProtocol:
     """
-    标准化的请教协议格式（v3.4.0 升级为批量模式）
+        标准化的请教协议格式（v3.3.1 升级为批量模式）
 
     批量请求格式 (SIE → 大爱):
     {
@@ -502,7 +502,7 @@ class AutoConfigUpdater:
         if os.path.exists(self.config_path):
             with open(self.config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        return {"version": "3.4.0", "intents": {}}
+                return {"version": "3.3.1", "intents": {}}
 
     def save_config(self, config):
         """保存配置到文件"""
@@ -539,7 +539,7 @@ class AutoConfigUpdater:
 
         intents[intent_name] = intent_entry
         config["intents"] = intents
-        config["version"] = self._bump_version(config.get("version", "3.4.0"))
+        config["version"] = self._bump_version(config.get("version", "3.3.1"))
         self.save_config(config)
         return True, "Intent '{}' learned and added to config".format(intent_name)
 
@@ -580,14 +580,14 @@ class AutoConfigUpdater:
 
 
 # ============================================================
-#  Module: UnknownIntentHandler — 未知意图处理 (v3.4.0 批量模式)
+#  Module: UnknownIntentHandler — 未知意图处理 (v3.3.1 批量模式)
 # ============================================================
 
 class UnknownIntentHandler:
     """
     当 NLU 识别不了时，批量捕获并管理未知输入。
 
-    v3.4.0 变更：
+        v3.3.1 变更：
     - 从逐条请求改为批量模式：攒够 threshold 个后一次性请教
     - 增加本地兜底：device_coord 不通时记录到 pending_learn.jsonl
     """
@@ -703,14 +703,14 @@ class UnknownIntentHandler:
 
 
 # ============================================================
-#  Module: SelfEvolvingNLU — 自我进化 NLU（核心入口）(v3.4.0)
+#  Module: SelfEvolvingNLU — 自我进化 NLU（核心入口）(v3.3.1)
 # ============================================================
 
 class SelfEvolvingNLU:
     """
     包装现有 NLU，添加自我进化能力
 
-    v3.4.0 新增：
+        v3.3.1 新增：
     - 批量自学习：未知意图攒够 threshold 个后一次性请教
     - 本地兜底：device_coord 不通时记录到本地日志
     - 路由结果 LRU 缓存：相同/相似输入跳过 NLU
@@ -1051,7 +1051,7 @@ def interactive_learn():
     se_nlu = SelfEvolvingNLU()
 
     print("=" * 60)
-    print("SIE Self-Evolution — 交互式学习模式 (v3.4.0)")
+    print("SIE Self-Evolution — 交互式学习模式 (v3.3.1)")
     print("=" * 60)
     print("输入用户语句，SIE 会尝试识别。")
     print("如果无法识别，会自动缓存到批量缓冲区。")
