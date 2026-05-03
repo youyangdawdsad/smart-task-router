@@ -2,6 +2,62 @@
 
 所有版本的更新记录。
 
+## v3.3.0 (2026-05-04)
+
+### ✨ 新增
+
+- **AI 语义理解（NLUClassifier）**
+  - NLU 从纯关键词匹配升级为双层匹配架构
+  - 关键词快速通道（nlu_config.json）作为第一层，响应快、确定性强
+  - AI 语义理解（NLUClassifier）作为 fallback，处理复杂句式和长尾场景
+  - 每个意图新增 `fallback_to_ai` 字段，灵活控制是否启用 AI fallback
+
+- **自我进化架构（SelfEvolvingNLU）**
+  - 未知意图自动捕获：NLU 识别不了时，自动记录并生成请教请求
+  - 知识请教协议（LearnProtocol）：标准化的 `learn_request` / `learn_response` 格式
+  - 自动配置更新（AutoConfigUpdater）：收到教学回复后，自动写入 `nlu_config.json`
+  - 学习日志（LearningLogger）：完整记录每次请教和学习过程
+  - 交互式学习模式：CLI 入口支持手动教学和验证
+
+- **新增 5 个意图**
+  - `timer_set`：设置定时器/倒计时
+  - `tts_speak`：语音播报/朗读
+  - `translate`：翻译文本
+  - `app_manage`：应用安装/打开/卸载
+  - `ai_write`：AI 内容生成/写作
+  - 意图总数从 20 增至 25+（含已学习意图）
+
+- **MCP 服务集成支持**
+  - 支持通过 MCP 协议接入第三方服务（mcd-mcp、高德地图、天气查询等）
+  - `nlu_config.json` 新增 `mcp_services` 配置字段
+
+- **自我进化测试（sie_evolve_test.py）**
+  - 14 个场景、107 项检查全部通过
+  - 覆盖：未知意图捕获、请教协议验证、配置自动更新、学习日志、回滚等
+
+### 🔧 变更
+
+- **nlu_config.json 结构升级**
+  - `keywords` 降级为快速通道匹配词
+  - 新增 `fallback_to_ai` 字段（默认 true）
+  - 新增 `mcp_services` 配置区域
+  - 版本号升级至 3.3.0
+
+### 📊 测试
+
+- sie_evolve_test：14 场景 107 项检查全通过（100%）
+- sie_quick_test：NLU 识别率验证通过
+- verify_engine：完整引擎验证通过
+
+### 📝 文档
+
+- 更新 skill.md 至 v3.3.0，新增自我进化架构、语义理解、MCP 集成章节
+- 更新 README.md 至 v3.3.0，新增架构图和特性说明
+- 更新 DESIGN.md 至 v3.3.0，新增意图→工具映射表、路由优先级、协议格式
+- 更新 CHANGELOG.md
+
+---
+
 ## v3.2.0 (2026-05-04)
 
 ### ✨ 新增

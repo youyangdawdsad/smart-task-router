@@ -101,7 +101,7 @@ def run_tests():
     # 1. 配置文件完整性检查
     # ============================================================
     print("\n[1] 配置文件完整性检查")
-    check("version is 3.2.0", config.get("version") == "3.2.0")
+    check("version is 3.3.0", config.get("version") == "3.3.0")
     check("has description", bool(config.get("description")))
     check("has intents", len(config.get("intents", {})) > 0)
     check("has cross_device_keywords", len(config.get("cross_device_keywords", [])) > 0)
@@ -124,7 +124,7 @@ def run_tests():
 
     test_cases = [
         # (input_text, expected_intent, description)
-        ("帮我发条短信给妈妈", "sms_send", "短信发送"),
+                ("帮我发条短信给妈妈", "message_send", "短信发送"),
         ("看看最近的短信", "sms_read", "短信查看"),
         ("打电话给妈妈", "call_make", "拨打电话"),
         ("明天下午3点加个会议", "calendar_create", "创建日程"),
@@ -134,14 +134,14 @@ def run_tests():
         ("加个待办买牛奶", "todo_manage", "待办管理"),
         ("帮我记一下这个想法", "note_manage", "笔记管理"),
         ("加个新联系人", "contact_manage", "联系人管理"),
-        ("播放音乐", "media_control", "媒体控制"),
+                ("播放音乐", "media_play", "媒体控制"),
         ("打开手电筒", "device_control", "设备控制"),
         ("开客厅的灯", "home_control", "智能家居"),
         ("找一下昨天拍的照片", "photo_manage", "照片管理"),
         ("我现在在哪", "location_query", "位置查询"),
         ("给我发个通知", "notification_send", "通知发送"),
-        ("写一段Python爬虫代码", "code_write", "写代码"),
-        ("搜一下人工智能", "web_search", "联网搜索"),
+                ("写一段Python爬虫代码", "code_execute", "写代码"),
+                ("搜一下人工智能", "search_info", "联网搜索"),
         ("打开这个文件", "file_read", "读取文件"),
         ("保存到文件里", "file_write", "写入文件"),
     ]
@@ -163,8 +163,8 @@ def run_tests():
     print("\n[3] 关键词匹配测试")
 
     keyword_tests = [
-        ("发短信", "sms_send"),
-        ("发信息", "sms_send"),
+                ("发短信", "message_send"),
+        ("发信息", "message_send"),
         ("看短信", "sms_read"),
         ("打电话", "call_make"),
         ("加日程", "calendar_create"),
@@ -174,14 +174,14 @@ def run_tests():
         ("待办", "todo_manage"),
         ("笔记", "note_manage"),
         ("联系人", "contact_manage"),
-        ("播放", "media_control"),
+                ("播放", "media_play"),
         ("手电筒", "device_control"),
         ("开灯", "home_control"),
         ("照片", "photo_manage"),
         ("导航", "location_query"),
         ("通知我", "notification_send"),
-        ("写代码", "code_write"),
-        ("搜索", "web_search"),
+                ("写代码", "code_execute"),
+        ("搜索", "search_info"),
         ("打开文件", "file_read"),
     ]
 

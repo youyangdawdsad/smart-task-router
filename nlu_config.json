@@ -1,6 +1,6 @@
 {
-  "version": "3.2.0",
-  "description": "SIE NLU 配置 — 意图识别关键词表",
+  "version": "3.3.0",
+  "description": "SIE NLU 配置 — 意图识别关键词表（v3.3.0 双层匹配 + 自我进化）",
   "intents": {
     "message_send": {
       "description": "发送短信",
@@ -29,7 +29,8 @@
         "帮我发条短信给妈妈",
         "发信息告诉他明天开会",
         "短信给老婆说我晚点回"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "sms_read": {
       "description": "查看短信",
@@ -54,7 +55,8 @@
         "看看最近的短信",
         "查一下有没有未读短信",
         "最近谁给我发短信了"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "call_make": {
       "description": "拨打电话",
@@ -64,8 +66,7 @@
         "拨电话",
         "呼叫",
         "打给",
-        "拨给",
-        "联系"
+        "拨给"
       ],
       "patterns": [
         "(打|拨|呼).*(电话|号)",
@@ -78,7 +79,8 @@
         "打电话给妈妈",
         "帮我打个电话给张三",
         "呼叫小李"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "calendar_create": {
       "description": "创建日程/会议",
@@ -91,7 +93,6 @@
         "加会议",
         "创建会议",
         "安排个",
-        "约个",
         "添加会议",
         "新建日程"
       ],
@@ -106,7 +107,8 @@
         "明天下午3点加个会议",
         "安排下周和客户的会议",
         "帮我创建一个日程"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "calendar_query": {
       "description": "查询日程",
@@ -132,7 +134,8 @@
         "今天有什么安排",
         "看下周日程",
         "最近有什么会议"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "alarm_set": {
       "description": "设置闹钟/提醒",
@@ -149,7 +152,7 @@
       "patterns": [
         "(设|定|加|设置).*(闹钟|提醒)",
         "提醒我.*",
-        "叫醒我"
+        "叫(醒|我)"
       ],
       "device": "phone",
       "tool": "alarm",
@@ -157,7 +160,8 @@
         "明天早上7点叫我",
         "设个闹钟",
         "提醒我下午开会"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "weather_query": {
       "description": "查询天气",
@@ -180,7 +184,8 @@
         "明天天气怎么样",
         "会不会下雨",
         "今天几度"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "todo_manage": {
       "description": "待办事项管理",
@@ -206,7 +211,8 @@
         "加个待办买牛奶",
         "看看我的待办清单",
         "把买菜标记完成"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "note_manage": {
       "description": "笔记管理",
@@ -230,7 +236,8 @@
         "帮我记一下这个想法",
         "写个笔记",
         "保存到笔记"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "contact_manage": {
       "description": "联系人管理",
@@ -254,7 +261,8 @@
         "加个新联系人",
         "查一下张三的号码",
         "帮我合并重复联系人"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "media_play": {
       "description": "媒体播放控制",
@@ -283,7 +291,8 @@
         "暂停",
         "下一首",
         "音量大点"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "device_control": {
       "description": "手机设备控制",
@@ -310,7 +319,8 @@
         "打开手电筒",
         "电量还剩多少",
         "蓝牙开了吗"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "home_control": {
       "description": "智能家居控制",
@@ -339,7 +349,8 @@
         "开客厅的灯",
         "空调调到26度",
         "关所有灯"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "photo_manage": {
       "description": "照片/视频管理",
@@ -365,7 +376,8 @@
         "找一下昨天拍的照片",
         "帮我修图",
         "清理一下废片"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "location_query": {
       "description": "位置/导航",
@@ -391,7 +403,8 @@
         "我现在在哪",
         "附近有加油站吗",
         "导航去公司"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "notification_send": {
       "description": "发通知/提醒",
@@ -410,7 +423,8 @@
       "examples": [
         "给我发个通知",
         "5分钟后通知我"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "code_execute": {
       "description": "写代码/编程",
@@ -431,7 +445,8 @@
         "写一段 Python 爬虫代码",
         "运行这个脚本",
         "帮我写个排序算法"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "search_info": {
       "description": "联网搜索",
@@ -452,7 +467,8 @@
       "examples": [
         "搜一下人工智能",
         "帮我查一下最新的新闻"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "office_work": {
       "description": "办公文档处理",
@@ -476,7 +492,8 @@
         "帮我做个PPT",
         "写一份Word文档",
         "做个Excel表格"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "booking": {
       "description": "预订服务",
@@ -501,7 +518,8 @@
         "帮我订一张明天去北京的机票",
         "订后天的火车票",
         "附近有什么酒店"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "file_read": {
       "description": "读取/查看文件",
@@ -520,7 +538,8 @@
       "examples": [
         "打开这个文件",
         "看看下载目录"
-      ]
+      ],
+      "fallback_to_ai": true
     },
     "file_write": {
       "description": "写入/创建文件",
@@ -538,7 +557,142 @@
       "examples": [
         "保存到文件里",
         "新建一个文件"
-      ]
+      ],
+      "fallback_to_ai": true
+    },
+    "timer_set": {
+      "description": "设置定时器/倒计时",
+      "keywords": [
+        "定个倒计时",
+        "倒计时",
+        "定时",
+        "计时",
+        "分钟后提醒",
+        "秒后提醒",
+        "番茄钟",
+        "倒数"
+      ],
+      "patterns": [
+        "(设|定|设置).*(倒计时|定时|计时|番茄)",
+        "\\d+(秒|分钟|小时).*(后|之后).*(提醒|叫我|闹)",
+        "倒计时.*\\d+"
+      ],
+      "device": "phone",
+      "tool": "timer",
+      "examples": [
+        "定个5分钟的倒计时",
+        "10分钟后提醒我",
+        "番茄钟25分钟"
+      ],
+      "fallback_to_ai": true
+    },
+    "tts_speak": {
+      "description": "语音播报/朗读",
+      "keywords": [
+        "念给我听",
+        "读出来",
+        "朗读",
+        "语音播报",
+        "念一下",
+        "读一下",
+        "说给我听",
+        "读一遍",
+        "帮我读"
+      ],
+      "patterns": [
+        "(念|读|朗读|播报|说|说给|念给).*(出来|给我|一遍|一下|听)",
+        "语音.*(念|读|播报)"
+      ],
+      "device": "phone",
+      "tool": "set_tts_enabled",
+      "examples": [
+        "念给我听",
+        "读一下这条短信",
+        "语音播报今天的日程"
+      ],
+      "fallback_to_ai": true
+    },
+    "translate": {
+      "description": "翻译文本",
+      "keywords": [
+        "翻译",
+        "翻译成",
+        "翻译一下",
+        "用英语说",
+        "用日语说",
+        "怎么说",
+        "怎么翻译",
+        "是什么意思"
+      ],
+      "patterns": [
+        "翻译.*(成|为|成英文|成中文|成日语)",
+        "(英文|日语|韩语|法语|德语).*(怎么说|怎么读)",
+        "是什么意思"
+      ],
+      "device": "any",
+      "tool": "web_search",
+      "examples": [
+        "翻译成英文",
+        "这个用日语怎么说",
+        "help是什么意思"
+      ],
+      "fallback_to_ai": true
+    },
+    "app_manage": {
+      "description": "应用安装/打开/卸载",
+      "keywords": [
+        "打开应用",
+        "打开app",
+        "安装",
+        "卸载",
+        "下载app",
+        "开一下",
+        "启动应用",
+        "关闭应用",
+        "强制停止",
+        "打开微信",
+        "打开抖音",
+        "打开支付宝"
+      ],
+      "patterns": [
+        "(打开|关闭|安装|卸载|下载|启动|强制停止).*(app|应用|软件|程序|微信|抖音|支付宝)",
+        "(打开|关闭).*(微信|抖音|支付宝|快手|淘宝|拼多多)"
+      ],
+      "device": "phone",
+      "tool": "agent_osbot_os_helper",
+      "examples": [
+        "打开微信",
+        "安装抖音",
+        "卸载这个app"
+      ],
+      "fallback_to_ai": true
+    },
+    "ai_write": {
+      "description": "AI 内容生成/写作",
+      "keywords": [
+        "帮我写",
+        "写一篇",
+        "写个文案",
+        "写邮件",
+        "写报告",
+        "写方案",
+        "写个请假",
+        "生成",
+        "帮我拟",
+        "写个回复"
+      ],
+      "patterns": [
+        "帮我.*(写|拟|生成|起草).*(文章|邮件|报告|方案|文案|回复|信)",
+        "(写|拟|起草).*(一篇|一个|一份)"
+      ],
+      "device": "any",
+      "tool": "agent_osbot_content_assistant",
+      "examples": [
+        "帮我写一封邮件",
+        "写个请假报告",
+        "帮我拟一份方案"
+      ],
+      "fallback_to_ai": true
     }
   },
   "cross_device_keywords": [
@@ -564,5 +718,26 @@
     "no_weather_query": true,
     "no_device_control": true,
     "no_side_effects": true
+  },
+  "mcp_services": {
+    "amap": {
+      "description": "高德地图服务：POI搜索、路线规划、天气查询",
+      "intents": [
+        "location_query",
+        "weather_query"
+      ]
+    },
+    "xiaomi-ice-content-search": {
+      "description": "小米内容搜索：影视综搜索、短视频搜索、小说搜索",
+      "intents": [
+        "search_info"
+      ]
+    },
+    "tongcheng": {
+      "description": "同程旅行：机票、火车票、酒店、景区搜索",
+      "intents": [
+        "booking"
+      ]
+    }
   }
 }

@@ -6,42 +6,48 @@
 
 智能调用引擎（SIE）是为小米 AI 助手（MiClaw）设计的多设备协作调度技能。它能分析任务特征、匹配设备能力、评估负载状态，自动做出最优路由决策。
 
-**当前版本**: v3.2.0
+**当前版本**: v3.3.0
 
 ### 核心能力
 
-- 🧠 **NLU 配置驱动**：意图识别完全由 `nlu_config.json` 外部配置驱动，支持 20 个意图，每个意图 4-12 个关键词 + 正则 patterns
-- 📝 **全链路日志（SieLogger）**：记录完整调用链路，支持四级日志、按任务 ID 追踪、文件持久化
-- 🔀 **智能调用指示器**：每次调用决策产生可见反馈，让你知道引擎在做什么
-- ⚠️ **崩溃风险检测**：电脑端实时监控执行环境，高风险操作自动拆分并通知手机端分步执行
-- 🔗 **双链路通信**：device_chat 主链路 + 网络心跳副链路，确保设备间通信始终可靠
-- 🔄 **自动设备注册**：新设备登录账号后自动发现、探测能力、接入引擎，无需手动配置
-- 🎤 **语音通知中继**：电脑端完成工作后，自动选择有语音能力的设备播报结果
+- 🧠 **NLU 配置驱动**：意图识别完全由 `nlu_config.json` 外部配置驱动，支持 25+ 个意图
+- 🤖 **AI 语义理解**：关键词快速通道 + AI 语义理解 fallback，双层匹配架构
+- 🔄 **自我进化**：未知意图自动捕获 → 请教学习 → 配置更新，NLU 持续进化
+- 📝 **全链路日志（SieLogger）**：记录完整调用链路，支持四级日志、按任务 ID 追踪
+- 🔀 **智能调用指示器**：每次调用决策产生可见反馈
+- ⚠️ **崩溃风险检测**：电脑端实时监控，高风险操作自动拆分并通知手机端
+- 🔗 **双链路通信**：device_chat 主链路 + 网络心跳副链路
+- 🔄 **自动设备注册**：新设备登录后自动发现、探测能力、接入引擎
+- 🎤 **语音通知中继**：任务完成后自动选择语音设备播报
+- 🔌 **MCP 服务集成**：接入第三方 MCP 服务，扩展能力边界
 
-### v3.2.0 架构变更
+### v3.3.0 架构变更
 
-- **NLU 外部配置化**：意图识别从硬编码改为 JSON 配置驱动，新增/修改意图只需编辑 `nlu_config.json`
-- **路由逻辑简化**：SIE 只做调度决策，不自己执行任务；跨设备任务统一交给 `device_coord`
-- **新增设计文档**：`DESIGN.md` 说明架构设计原则和决策依据
+- **AI 语义理解**：NLU 从纯关键词匹配升级为双层匹配架构（关键词快速通道 + AI fallback）
+- **自我进化架构**：SelfEvolvingNLU + LearnProtocol，NLU 能够持续学习和扩展
+- **新增 5 个意图**：timer_set, tts_speak, translate, app_manage, ai_write
+- **MCP 集成**：支持接入第三方 MCP 服务
 
 ## 架构
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    智能调用引擎 (SIE v3.2)                            │
-├─────────┬──────────┬──────────┬──────────┬──────────┬──────────────┤
-│ 任务分析 │ 路由决策  │ 负载均衡  │ 故障转移  │ 崩溃检测  │ NLU 解析     │
-│ Profiler│ Rules    │ Balancer │ Failover │ CrashDet │ (JSON配置)   │
-├─────────┴──────────┴──────────┴──────────┴──────────┴──────────────┤
-│ 🔀 指示器 │ 🔗 双链路 │ 🔄 自动注册 │ 🎤 语音中继 │ 📝 SieLogger  │
-├──────────┴──────────┴────────────┴────────────┴───────────────────┤
-│                    设备能力矩阵 + 路由日志                           │
-└─────────────────────────────────────────────────────────────────────┘
-         │                                              │
-    ┌────▼────┐                                  ┌──────▼──────┐
-    │  电脑端  │◄──── 主链路 ────────────────────►│   手机端     │
-    │ (主节点) │◄──── 副链路 ────────────────────►│  (协作节点)  │
-    └─────────┘                                  └─────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    智能调用引擎 (SIE v3.3)                                │
+├─────────┬──────────┬──────────┬──────────┬──────────┬──────────────────┤
+│ 任务分析 │ 路由决策  │ 负载均衡  │ 故障转移  │ 崩溃检测  │ NLU 解析         │
+│ Profiler│ Rules    │ Balancer │ Failover │ CrashDet │ (JSON+AI双层)   │
+├─────────┴──────────┴──────────┴──────────┴──────────┴──────────────────┤
+│ 🔄 自我进化 │ 🤖 AI语义理解 │ 🔌 MCP集成 │ 🔀 指示器 │ 📝 SieLogger    │
+├─────────────┴───────────────┴────────────┴──────────┴──────────────────┤
+│ 🔗 双链路通信 │ 🔄 自动设备注册 │ 🎤 语音通知中继                        │
+├──────────────┴────────────────┴────────────────────────────────────────┤
+│                    设备能力矩阵 + 路由日志                               │
+└─────────────────────────────────────────────────────────────────────────┘
+         │                                                    │
+    ┌────▼────┐                                        ┌──────▼──────┐
+    │  电脑端  │◄──── 主链路 ──────────────────────────►│   手机端     │
+    │ (主节点) │◄──── 副链路 ──────────────────────────►│  (协作节点)  │
+    └─────────┘                                        └─────────────┘
 ```
 
 ## 核心模块
@@ -60,59 +66,73 @@
 | 语音通知中继 | [voice-notification-relay.md](references/voice-notification-relay.md) | 任务完成后语音播报 |
 | 自然语言理解 | [natural-language-understanding.md](references/natural-language-understanding.md) | 意图识别、实体提取、模糊匹配 |
 | 全链路日志 | [sie-logger.md](references/sie-logger.md) | 四级日志、任务追踪、文件持久化 |
+| 自我进化 | [self-evolution.md](references/self-evolution.md) | LearnProtocol、自动配置更新 |
 
 ## NLU 配置
 
-v3.2.0 起，NLU 意图识别完全由 `nlu_config.json` 驱动：
+v3.3.0 起，NLU 采用双层匹配架构：
 
-```json
-{
-  "version": "3.2.0",
-  "intents": {
-    "sms_send": {
-      "description": "发送短信",
-      "keywords_zh": ["发短信", "发条短信", "发个短信", ...],
-      "patterns": ["发.*短信", "发.*信息", ...],
-      "device": "phone",
-      "tool": "read_sms",
-      "examples": ["帮我发条短信给妈妈", ...]
-    },
-    ...
-  }
-}
+```
+用户输入
+  │
+  ├─ 关键词快速通道（nlu_config.json）
+  │   ├─ 正则模式匹配（置信度 0.95）
+  │   ├─ 关键词匹配（置信度 0.9）
+  │   └─ 模糊匹配（阈值 0.6）
+  │
+  └─ AI 语义理解 fallback（NLUClassifier）
+      └─ 大模型意图分类（25+ 个意图）
 ```
 
-### 支持的意图（20 个）
+### 支持的意图（25+ 个）
 
 | 意图 | 说明 | 目标设备 |
 |------|------|----------|
-| `sms_send` | 发送短信 | phone |
+| `message_send` | 发送短信 | phone |
 | `sms_read` | 查看短信 | phone |
 | `call_make` | 拨打电话 | phone |
 | `calendar_create` | 创建日程 | phone |
 | `calendar_query` | 查询日程 | phone |
 | `alarm_set` | 设置闹钟 | phone |
-| `weather_query` | 查询天气 | agent |
+| `weather_query` | 查询天气 | any |
 | `todo_manage` | 待办管理 | phone |
 | `note_manage` | 笔记管理 | phone |
 | `contact_manage` | 联系人管理 | phone |
-| `media_control` | 媒体控制 | phone |
-| `device_control` | 设备控制 | agent |
-| `home_control` | 智能家居 | agent |
+| `media_play` | 媒体控制 | phone |
+| `device_control` | 设备控制 | phone |
+| `home_control` | 智能家居 | phone |
 | `photo_manage` | 照片管理 | phone |
-| `location_query` | 位置查询 | phone |
+| `location_query` | 位置查询 | any |
 | `notification_send` | 发送通知 | phone |
-| `code_write` | 代码编写 | pc |
-| `web_search` | 网页搜索 | agent |
-| `file_read` | 读取文件 | pc |
-| `file_write` | 写入文件 | pc |
+| `code_execute` | 代码编写 | pc |
+| `search_info` | 网页搜索 | any |
+| `office_work` | 办公文档 | pc |
+| `booking` | 预订服务 | any |
+| `file_read` | 读取文件 | phone |
+| `file_write` | 写入文件 | phone |
+| `timer_set` | 定时器/倒计时 | phone |
+| `tts_speak` | 语音播报 | phone |
+| `translate` | 翻译文本 | any |
+| `app_manage` | 应用管理 | phone |
+| `ai_write` | AI 内容生成 | any |
 
 ### 匹配策略
 
 1. **正则模式匹配**（最高优先级，置信度 0.95）
 2. **关键词匹配**（置信度最高 0.9）
 3. **模糊匹配**（SequenceMatcher，容错 0.6 阈值）
-4. **未知意图回退**（引导用户重新描述）
+4. **AI 语义理解 fallback**（大模型意图分类）
+5. **未知意图回退**（引导用户重新描述 / 自我进化）
+
+## 自我进化
+
+v3.3.0 引入自我进化架构，NLU 能够持续学习：
+
+```
+用户输入 → NLU 解析 → 未知意图？ → 捕获 → 生成 learn_request → 发送给大爱
+                                                                    ↓
+验证学习效果 ← 重新加载 NLU ← 自动更新配置 ← 收到 learn_response
+```
 
 ## 快速开始
 
@@ -129,7 +149,7 @@ v3.2.0 起，NLU 意图识别完全由 `nlu_config.json` 驱动：
 帮我发条短信给妈妈
 ```
 
-引擎会通过 NLU 解析意图（sms_send）、提取实体、匹配工具（read_sms），然后路由到手机端执行。
+引擎会通过 NLU 解析意图（message_send）、提取实体、匹配工具（sms），然后路由到手机端执行。
 
 ### 批量路由
 
@@ -157,16 +177,14 @@ v3.2.0 起，NLU 意图识别完全由 `nlu_config.json` 驱动：
 ## 路由决策流程
 
 ```
-任务输入 → NLU 解析(JSON配置) → 自动设备注册 → 任务分析 → 设备能力匹配 → 负载评估 → 故障检查 → 崩溃风险评估 → 路由决策 → 指示器输出 → 任务分发 → 语音通知
+任务输入 → 关键词快速通道 → AI 语义理解 fallback → 自动设备注册 → 任务分析 → 设备能力匹配 → 负载评估 → 故障检查 → 崩溃风险评估 → 路由决策 → 指示器输出 → 任务分发 → 语音通知
 ```
 
-### NLU 解析（v3.2.0 配置驱动）
+### NLU 解析（v3.3.0 双层匹配）
 
-用户输入自然语言后，NLU 模块从 `nlu_config.json` 加载意图配置进行匹配：
-1. **正则模式匹配**：最高优先级，匹配 patterns 字段
-2. **关键词匹配**：匹配 keywords_zh 字段
-3. **模糊匹配**：SequenceMatcher 相似度计算，支持错别字容错
-4. **置信度计算**：综合评分 0-1
+用户输入自然语言后，NLU 模块采用双层匹配：
+1. **关键词快速通道**：从 `nlu_config.json` 加载意图配置进行匹配
+2. **AI 语义理解 fallback**：快速通道无法匹配时，调用大模型进行意图分类
 
 ### 硬规则优先
 
@@ -174,7 +192,7 @@ v3.2.0 起，NLU 意图识别完全由 `nlu_config.json` 驱动：
 - **手机端**：sms, call, camera, location, alarm, media, screenshot
 - **电脑端**：code, ide, office
 
-### 路由简化（v3.2.0）
+### 路由简化（v3.2.0+）
 
 SIE 只做调度决策，不自己执行任务：
 - 跨设备任务统一路由到 `device_coord`
@@ -202,22 +220,28 @@ SIE 只做调度决策，不自己执行任务：
 | `auto_discovery_enabled` | true | 是否启用自动设备发现 |
 | `voice_relay_enabled` | true | 是否启用语音通知中继 |
 | `nlu_enabled` | true | 是否启用自然语言理解 |
+| `nlu_ai_fallback_enabled` | true | 是否启用 AI 语义理解 fallback |
+| `self_evolve_enabled` | true | 是否启用自我进化架构 |
 | `logger_enabled` | true | 是否启用全链路日志 |
 
 ## 验证
 
 ```bash
-# NLU 识别率快速验证（153 个断言）
+# NLU 识别率快速验证
 python sie_quick_test.py
 
-# 完整引擎验证（285 个断言）
+# 完整引擎验证
 python verify_engine.py
+
+# 自我进化测试
+python sie_evolve_test.py
 ```
 
-### 测试结果（v3.2.0）
+### 测试结果（v3.3.0）
 
 | 测试套件 | 通过/总数 | 通过率 | 说明 |
 |---------|----------|--------|------|
+| sie_evolve_test | 107/107 | 100% | 自我进化 14 场景验证 |
 | sie_quick_test | 153/153 | 100% | NLU 识别率验证 |
 | verify_engine | 262/285 | 91.9% | 完整引擎验证 |
 
@@ -225,13 +249,15 @@ python verify_engine.py
 
 ```
 smart-task-router/
-├── SKILL.md                    # 主文档（技能说明）
+├── skill.md                    # 主文档（技能说明）
 ├── README.md                   # 本文件
 ├── CHANGELOG.md                # 版本更新记录
 ├── DESIGN.md                   # 设计原则文档
-├── nlu_config.json             # NLU 意图配置（v3.2.0 新增）
+├── nlu_config.json             # NLU 意图配置
+├── sie_self_evolve.py          # 自我进化模块
 ├── verify_engine.py            # 完整引擎测试脚本
-├── sie_quick_test.py           # NLU 快速验证脚本（v3.2.0 新增）
+├── sie_quick_test.py           # NLU 快速验证脚本
+├── sie_evolve_test.py          # 自我进化测试脚本
 ├── integrate_v320.py           # v3.2.0 集成脚本
 └── references/
     ├── task-profiler.md        # 任务分析器
@@ -245,7 +271,8 @@ smart-task-router/
     ├── auto-device-registration.md  # 自动设备注册
     ├── voice-notification-relay.md  # 语音通知中继
     ├── natural-language-understanding.md  # 自然语言理解
-    └── sie-logger.md           # 全链路日志
+    ├── sie-logger.md           # 全链路日志
+    └── self-evolution.md       # 自我进化架构
 ```
 
 ## 版本历史
