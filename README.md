@@ -6,11 +6,11 @@
 
 智能调用引擎（SIE）是为小米 AI 助手（MiClaw）设计的多设备协作调度技能。它能分析任务特征、匹配设备能力、评估负载状态，自动做出最优路由决策。
 
-**当前版本**: v3.1.0
+**当前版本**: v3.2.0
 
 ### 核心能力
 
-- 🧠 **自然语言理解（NLU）**：五层理解能力，支持意图识别、同义词扩展、实体提取、模糊匹配、置信度计算
+- 🧠 **NLU 配置驱动**：意图识别完全由 `nlu_config.json` 外部配置驱动，支持 20 个意图，每个意图 4-12 个关键词 + 正则 patterns
 - 📝 **全链路日志（SieLogger）**：记录完整调用链路，支持四级日志、按任务 ID 追踪、文件持久化
 - 🔀 **智能调用指示器**：每次调用决策产生可见反馈，让你知道引擎在做什么
 - ⚠️ **崩溃风险检测**：电脑端实时监控执行环境，高风险操作自动拆分并通知手机端分步执行
@@ -18,14 +18,20 @@
 - 🔄 **自动设备注册**：新设备登录账号后自动发现、探测能力、接入引擎，无需手动配置
 - 🎤 **语音通知中继**：电脑端完成工作后，自动选择有语音能力的设备播报结果
 
+### v3.2.0 架构变更
+
+- **NLU 外部配置化**：意图识别从硬编码改为 JSON 配置驱动，新增/修改意图只需编辑 `nlu_config.json`
+- **路由逻辑简化**：SIE 只做调度决策，不自己执行任务；跨设备任务统一交给 `device_coord`
+- **新增设计文档**：`DESIGN.md` 说明架构设计原则和决策依据
+
 ## 架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    智能调用引擎 (SIE v3.1)                            │
+│                    智能调用引擎 (SIE v3.2)                            │
 ├─────────┬──────────┬──────────┬──────────┬──────────┬──────────────┤
 │ 任务分析 │ 路由决策  │ 负载均衡  │ 故障转移  │ 崩溃检测  │ NLU 解析     │
-│ Profiler│ Rules    │ Balancer │ Failover │ CrashDet │ NLU          │
+│ Profiler│ Rules    │ Balancer │ Failover │ CrashDet │ (JSON配置)   │
 ├─────────┴──────────┴──────────┴──────────┴──────────┴──────────────┤
 │ 🔀 指示器 │ 🔗 双链路 │ 🔄 自动注册 │ 🎤 语音中继 │ 📝 SieLogger  │
 ├──────────┴──────────┴────────────┴────────────┴───────────────────┤
@@ -55,6 +61,59 @@
 | 自然语言理解 | [natural-language-understanding.md](references/natural-language-understanding.md) | 意图识别、实体提取、模糊匹配 |
 | 全链路日志 | [sie-logger.md](references/sie-logger.md) | 四级日志、任务追踪、文件持久化 |
 
+## NLU 配置
+
+v3.2.0 起，NLU 意图识别完全由 `nlu_config.json` 驱动：
+
+```json
+{
+  "version": "3.2.0",
+  "intents": {
+    "sms_send": {
+      "description": "发送短信",
+      "keywords_zh": ["发短信", "发条短信", "发个短信", ...],
+      "patterns": ["发.*短信", "发.*信息", ...],
+      "device": "phone",
+      "tool": "read_sms",
+      "examples": ["帮我发条短信给妈妈", ...]
+    },
+    ...
+  }
+}
+```
+
+### 支持的意图（20 个）
+
+| 意图 | 说明 | 目标设备 |
+|------|------|----------|
+| `sms_send` | 发送短信 | phone |
+| `sms_read` | 查看短信 | phone |
+| `call_make` | 拨打电话 | phone |
+| `calendar_create` | 创建日程 | phone |
+| `calendar_query` | 查询日程 | phone |
+| `alarm_set` | 设置闹钟 | phone |
+| `weather_query` | 查询天气 | agent |
+| `todo_manage` | 待办管理 | phone |
+| `note_manage` | 笔记管理 | phone |
+| `contact_manage` | 联系人管理 | phone |
+| `media_control` | 媒体控制 | phone |
+| `device_control` | 设备控制 | agent |
+| `home_control` | 智能家居 | agent |
+| `photo_manage` | 照片管理 | phone |
+| `location_query` | 位置查询 | phone |
+| `notification_send` | 发送通知 | phone |
+| `code_write` | 代码编写 | pc |
+| `web_search` | 网页搜索 | agent |
+| `file_read` | 读取文件 | pc |
+| `file_write` | 写入文件 | pc |
+
+### 匹配策略
+
+1. **正则模式匹配**（最高优先级，置信度 0.95）
+2. **关键词匹配**（置信度最高 0.9）
+3. **模糊匹配**（SequenceMatcher，容错 0.6 阈值）
+4. **未知意图回退**（引导用户重新描述）
+
 ## 快速开始
 
 ### 路由单个任务
@@ -70,7 +129,7 @@
 帮我发条短信给妈妈
 ```
 
-引擎会通过 NLU 解析意图（send_message）、提取实体（person: 妈妈）、匹配工具（sms），然后路由到手机端执行。
+引擎会通过 NLU 解析意图（sms_send）、提取实体、匹配工具（read_sms），然后路由到手机端执行。
 
 ### 批量路由
 
@@ -98,23 +157,28 @@
 ## 路由决策流程
 
 ```
-任务输入 → NLU 解析 → 自动设备注册 → 任务分析 → 设备能力匹配 → 负载评估 → 故障检查 → 崩溃风险评估 → 路由决策 → 指示器输出 → 任务分发 → 语音通知
+任务输入 → NLU 解析(JSON配置) → 自动设备注册 → 任务分析 → 设备能力匹配 → 负载评估 → 故障检查 → 崩溃风险评估 → 路由决策 → 指示器输出 → 任务分发 → 语音通知
 ```
 
-### NLU 解析
+### NLU 解析（v3.2.0 配置驱动）
 
-用户输入自然语言后，NLU 模块进行五层理解：
-1. **意图识别**：正则模板匹配 10 种意图
-2. **同义词扩展**：100+ 同义词映射
-3. **实体提取**：人名、时间、地点、内容
-4. **模糊匹配**：SequenceMatcher 相似度计算，支持错别字容错
-5. **置信度计算**：综合评分 0-1
+用户输入自然语言后，NLU 模块从 `nlu_config.json` 加载意图配置进行匹配：
+1. **正则模式匹配**：最高优先级，匹配 patterns 字段
+2. **关键词匹配**：匹配 keywords_zh 字段
+3. **模糊匹配**：SequenceMatcher 相似度计算，支持错别字容错
+4. **置信度计算**：综合评分 0-1
 
 ### 硬规则优先
 
 当任务涉及以下工具时，直接路由到对应设备类型，跳过打分：
 - **手机端**：sms, call, camera, location, alarm, media, screenshot
 - **电脑端**：code, ide, office
+
+### 路由简化（v3.2.0）
+
+SIE 只做调度决策，不自己执行任务：
+- 跨设备任务统一路由到 `device_coord`
+- 单设备任务直接路由到目标设备
 
 ### 崩溃风险拦截
 
@@ -140,45 +204,22 @@
 | `nlu_enabled` | true | 是否启用自然语言理解 |
 | `logger_enabled` | true | 是否启用全链路日志 |
 
-## 性能基准
-
-v3.1.0 全模块性能优化后的基准测试数据：
-
-| 测试场景 | 耗时 | 吞吐量 |
-|---------|------|--------|
-| 完整流水线 | 23.23 μs/op | 43,000 ops/s |
-| NLU 解析 | ~10 μs/op | 100K ops/s |
-| 路由决策（硬规则） | 0.15 μs/op | 6.86M ops/s |
-| 设备能力评分 | 0.53 μs/op | 1.89M ops/s |
-| 崩溃风险评估 | 3.10 μs/op | 323K ops/s |
-| 任务分析 | 1.58 μs/op | 634K ops/s |
-| 负载均衡 | 1.10 μs/op | 909K ops/s |
-
 ## 验证
 
 ```bash
+# NLU 识别率快速验证（153 个断言）
+python sie_quick_test.py
+
+# 完整引擎验证（285 个断言）
 python verify_engine.py
 ```
 
-297 个断言，覆盖全部 14 个模块：
+### 测试结果（v3.2.0）
 
-| 模块 | 测试数 | 说明 |
-|------|--------|------|
-| TaskProfiler | 14 | 任务分析、复杂度、紧急度、可拆分性 |
-| DeviceCapability | 5 | 能力覆盖度、评分计算 |
-| RoutingRules | 13 | 硬规则、软规则、proximity、边界 |
-| LoadBalancer | 8 | 心跳检测、队列管理 |
-| FailoverMigration | 15 | 故障检测、三级迁移、高风险保护 |
-| RoutingLog | 5 | 日志记录、溢出清理 |
-| Edge Cases | 13 | 空工具、低分拦截、多规则冲突 |
-| InvocationIndicator | 23 | 5种指示器类型、历史管理、溢出、禁用 |
-| CrashDetector | 32 | 6种风险因子、综合评估、任务拆分 |
-| DualLink | 35 | 建立/确认、心跳、超时、状态转换、紧急通知 |
-| AutoDeviceRegistration | 12 | 设备发现、能力探测、动态注册 |
-| VoiceNotificationRelay | 15 | 语音设备选择、播报去重、内容优化 |
-| SieLogger | 20 | 日志记录、过滤、持久化、任务追踪 |
-| NaturalLanguageUnderstanding | 25 | 意图识别、实体提取、模糊匹配、置信度 |
-| TaskProfiler v4 NLU 集成 | 15 | NLU 与任务分析器的集成测试 |
+| 测试套件 | 通过/总数 | 通过率 | 说明 |
+|---------|----------|--------|------|
+| sie_quick_test | 153/153 | 100% | NLU 识别率验证 |
+| verify_engine | 262/285 | 91.9% | 完整引擎验证 |
 
 ## 文件结构
 
@@ -187,7 +228,11 @@ smart-task-router/
 ├── SKILL.md                    # 主文档（技能说明）
 ├── README.md                   # 本文件
 ├── CHANGELOG.md                # 版本更新记录
-├── verify_engine.py            # 测试验证脚本
+├── DESIGN.md                   # 设计原则文档
+├── nlu_config.json             # NLU 意图配置（v3.2.0 新增）
+├── verify_engine.py            # 完整引擎测试脚本
+├── sie_quick_test.py           # NLU 快速验证脚本（v3.2.0 新增）
+├── integrate_v320.py           # v3.2.0 集成脚本
 └── references/
     ├── task-profiler.md        # 任务分析器
     ├── device-capability.md    # 设备能力矩阵
