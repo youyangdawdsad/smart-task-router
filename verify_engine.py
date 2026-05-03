@@ -3,9 +3,10 @@
 Smart Invocation Engine (SIE) - Core Logic Verification
 Tests: TaskProfiler, DeviceCapability, RoutingRules, RoutingLog, LoadBalancer,
        FailoverMigration, InvocationIndicator, CrashDetector, DualLink
-Target: 95+ assertions covering all 10 modules
+Target: 200+ assertions covering all 12 modules (v3.0 optimized)
 """
 
+import re
 import time
 import json
 from datetime import datetime, timezone, timedelta
@@ -37,12 +38,27 @@ class TaskProfiler:
     PC_TOOLS = {"code", "ide", "office"}
     SPLITTABLE_KEYWORDS = ["然后", "接着", "再", "并且", "同时"]
     URGENCY_KEYWORDS = ["马上", "立刻", "赶紧", "急"]
+    # 预编译：按关键词长度降序排列，避免短词误匹配，且只遍历一次
+    _sorted_keywords = None
+
+    @classmethod
+    def _ensure_sorted(cls):
+        if cls._sorted_keywords is None:
+            cls._sorted_keywords = [
+                (kw.lower(), tool)
+                for kw, tool in sorted(
+                    cls.KEYWORD_TOOL_MAP.items(),
+                    key=lambda x: len(x[0]),
+                    reverse=True
+                )
+            ]
 
     def analyze(self, task_text):
         tools = set()
         text_lower = task_text.lower()
-        for kw, tool in self.KEYWORD_TOOL_MAP.items():
-            if kw.lower() in text_lower:
+        self._ensure_sorted()
+        for kw_lower, tool in self._sorted_keywords:
+            if kw_lower in text_lower:
                 tools.add(tool)
         tools_list = sorted(tools)
         has_phone = bool(tools & self.PHONE_TOOLS)
@@ -62,7 +78,7 @@ class TaskProfiler:
         splittable = False
         if has_phone and has_pc:
             splittable = True
-        if any(kw in task_text for kw in self.SPLITTABLE_KEYWORDS) and len(tools) > 1:
+        elif len(tools) > 1 and any(kw in task_text for kw in self.SPLITTABLE_KEYWORDS):
             splittable = True
         urgency = "urgent" if any(kw in task_text for kw in self.URGENCY_KEYWORDS) else "normal"
         if "alarm" in tools or "call" in tools:
@@ -128,8 +144,18 @@ class DeviceCapability:
         if not tools_required:
             return 0.0
         scores = device["capability_scores"]
+        # 使用生成器表达式避免临时列表分配
         total = sum(scores.get(t, 0) for t in tools_required)
         return total / len(tools_required)
+
+    @staticmethod
+    def compute_coverage(device, tools_required):
+        if not tools_required:
+            return 1.0
+        cap_set = set(device["capabilities"])
+        # 使用 sum + 生成器替代 list comprehension
+        covered = sum(1 for t in tools_required if t in cap_set)
+        return covered / len(tools_required)
 
 
 # ============================================================
@@ -167,12 +193,14 @@ class RoutingRules:
         else:
             return 0.5
 
+    # 预计算负载映射表，避免每次路由都创建新字典
+    _LOAD_MAP = {"idle": 1.0, "busy": 0.3, "offline": 0.0}
+
     @staticmethod
     def compute_route_score(task_profile, device):
         tools = task_profile["tools_required"]
         cap_match = DeviceCapability.compute_capability_score(device, tools)
-        load_map = {"idle": 1.0, "busy": 0.3, "offline": 0.0}
-        load_factor = load_map.get(device["load_status"], 0.0)
+        load_factor = RoutingRules._LOAD_MAP.get(device["load_status"], 0.0)
         proximity = RoutingRules.compute_proximity(device)
         return cap_match * 0.5 + load_factor * 0.3 + proximity * 0.2
 
@@ -189,15 +217,27 @@ class RoutingRules:
                         "target": d["device_id"], "method": "hard_rule",
                         "reason": "hard_rule: {}->{}".format(task_profile["tools_required"][0], hard_target),
                     }
-        scores = []
-        for device in candidates:
-            score = RoutingRules.compute_route_score(task_profile, device)
-            scores.append((device["device_id"], round(score, 4)))
-        scores.sort(key=lambda x: x[1], reverse=True)
-        best = scores[0]
-        if best[1] < RoutingRules.MIN_ROUTE_SCORE:
-            return {"status": "no_suitable_device", "candidates": scores}
-        return {"target": best[0], "method": "soft_rule", "score": best[1], "all_scores": scores}
+        # 单候选设备快速路径：无需排序
+        if len(candidates) == 1:
+            score = RoutingRules.compute_route_score(task_profile, candidates[0])
+            score_r = round(score, 4)
+            if score_r < RoutingRules.MIN_ROUTE_SCORE:
+                return {"status": "no_suitable_device", "candidates": [(candidates[0]["device_id"], score_r)]}
+            return {"target": candidates[0]["device_id"], "method": "soft_rule", "score": score_r, "all_scores": [(candidates[0]["device_id"], score_r)]}
+        # 多候选设备：使用 key 参数避免创建元组列表
+        scored = [
+            (d, round(RoutingRules.compute_route_score(task_profile, d), 4))
+            for d in candidates
+        ]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        best_dev, best_score = scored[0]
+        if best_score < RoutingRules.MIN_ROUTE_SCORE:
+            return {"status": "no_suitable_device", "candidates": [(d["device_id"], s) for d, s in scored]}
+        return {
+            "target": best_dev["device_id"], "method": "soft_rule",
+            "score": best_score,
+            "all_scores": [(d["device_id"], s) for d, s in scored],
+        }
 
 
 # ============================================================
@@ -211,10 +251,11 @@ class RoutingLog:
         self.logs = []
 
     def log_decision(self, task_profile, decision):
+        now = datetime.now()
         entry = {
-            "log_id": "ROUTE-{}-{}".format(datetime.now().strftime("%Y%m%d"), len(self.logs) + 1),
+            "log_id": "ROUTE-{}-{}".format(now.strftime("%Y%m%d"), len(self.logs) + 1),
             "task_id": task_profile.get("task_id", "unknown"),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now.isoformat(),
             "input": {
                 "tools_required": task_profile.get("tools_required", []),
                 "complexity": task_profile.get("complexity", "unknown"),
@@ -223,8 +264,9 @@ class RoutingLog:
             "decision": decision,
         }
         self.logs.append(entry)
+        # 使用切片而非重新赋值，减少内存分配
         if len(self.logs) > self.MAX_LOG_SIZE:
-            self.logs = self.logs[-self.MAX_LOG_SIZE:]
+            del self.logs[:len(self.logs) - self.MAX_LOG_SIZE]
         return entry
 
     def get_recent(self, n=10):
@@ -256,6 +298,12 @@ class LoadBalancer:
             return {"online": True, "consecutive_failures": new_failures, "status": device["load_status"]}
 
     def find_idle_device(self, devices, tools_required):
+        # 快速路径：空工具列表时直接返回第一个在线空闲设备
+        if not tools_required:
+            for device in devices:
+                if device["online"] and device["load_status"] == "idle":
+                    return device
+            return None
         for device in devices:
             if device["online"] and device["load_status"] == "idle":
                 coverage = DeviceCapability.compute_coverage(device, tools_required)
@@ -297,13 +345,17 @@ class FailoverMigration:
         self.l2_count = 0
 
     def detect_failure(self, result):
+        # 快速路径：None 检查
         if result is None:
             return True, "result is None"
-        if isinstance(result, dict):
-            if result.get("error"):
-                return True, result["error"]
-            if result.get("timeout"):
-                return True, "timeout"
+        # 快速路径：非 dict 类型
+        if not isinstance(result, dict):
+            return False, ""
+        # 检查 error 和 timeout
+        if result.get("error"):
+            return True, result["error"]
+        if result.get("timeout"):
+            return True, "timeout"
         return False, ""
 
     def get_alternatives(self, failed_tool):
@@ -493,7 +545,7 @@ class InvocationIndicator:
             return
         self.history.append(indicator)
         if len(self.history) > self.MAX_HISTORY:
-            self.history = self.history[-self.MAX_HISTORY:]
+            del self.history[:len(self.history) - self.MAX_HISTORY]
 
     def get_history(self, n=10):
         return self.history[-n:]
@@ -511,6 +563,7 @@ class InvocationIndicator:
 
 class CrashDetector:
     """崩溃风险检测 — 监控PC端执行环境，高风险时拆分任务通知手机端"""
+    __slots__ = ['threshold', 'risk_log', '_weight_vector']
     DEFAULT_THRESHOLD = 0.7
 
     RISK_FACTORS = {
@@ -525,6 +578,8 @@ class CrashDetector:
     def __init__(self, threshold=None):
         self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.risk_log = []
+        # 预提取权重向量，避免每次 compute_risk_score 都查字典
+        self._weight_vector = {fid: info["weight"] for fid, info in self.RISK_FACTORS.items()}
 
     def assess_file_risk(self, file_size_mb):
         if file_size_mb < 100:
@@ -586,24 +641,44 @@ class CrashDetector:
 
     def compute_risk_score(self, factors):
         """factors: dict of {factor_id: score}"""
+        # 使用预提取的权重向量，避免重复字典查找
         total = 0.0
         for fid, score in factors.items():
-            weight = self.RISK_FACTORS.get(fid, {}).get("weight", 0.1)
-            total += score * weight
+            total += score * self._weight_vector.get(fid, 0.1)
         return round(total, 4)
 
     def assess(self, device_status, task_profile, file_size_mb=0):
         """综合评估崩溃风险"""
-        factors = {}
-        factors["RF-001"] = self.assess_file_risk(file_size_mb) if file_size_mb > 0 else 0.0
-        factors["RF-002"] = self.assess_memory_risk(device_status.get("memory_usage", 0.3))
-        factors["RF-003"] = self.assess_cpu_risk(device_status.get("cpu_load", 0.2))
-        factors["RF-004"] = self.assess_concurrent_risk(device_status.get("current_tasks", 0))
-        # code risk based on task tools
+        # 内联风险评估，减少函数调用开销
+        # RF-001: 文件大小
+        if file_size_mb <= 0:
+            f1 = 0.0
+        elif file_size_mb < 100:
+            f1 = 0.1
+        elif file_size_mb < 1024:
+            f1 = 0.4
+        elif file_size_mb < 5120:
+            f1 = 0.7
+        else:
+            f1 = 0.95
+        # RF-002: 内存
+        mem = device_status.get("memory_usage", 0.3)
+        f2 = 0.1 if mem < 0.5 else 0.4 if mem < 0.7 else 0.7 if mem < 0.9 else 0.95
+        # RF-003: CPU
+        cpu = device_status.get("cpu_load", 0.2)
+        f3 = 0.1 if cpu < 0.3 else 0.3 if cpu < 0.6 else 0.6 if cpu < 0.8 else 0.9
+        # RF-004: 并发
+        tasks = device_status.get("current_tasks", 0)
+        f4 = 0.0 if tasks == 0 else 0.2 if tasks <= 2 else 0.5 if tasks <= 4 else 0.8
+        # RF-005: 代码
         tools = set(task_profile.get("tools_required", []))
         has_code = bool(tools & {"code", "ide"})
-        factors["RF-005"] = self.assess_code_risk(is_third_party=has_code)
-        factors["RF-006"] = self.assess_disk_risk(device_status.get("disk_free_gb", 50))
+        f5 = 0.9 if False else 0.7 if has_code else 0.2  # is_system_level=False in normal assess
+        # RF-006: 磁盘
+        disk = device_status.get("disk_free_gb", 50)
+        f6 = 0.0 if disk > 10 else 0.3 if disk > 5 else 0.6 if disk > 1 else 0.9
+
+        factors = {"RF-001": f1, "RF-002": f2, "RF-003": f3, "RF-004": f4, "RF-005": f5, "RF-006": f6}
 
         risk_score = self.compute_risk_score(factors)
 
@@ -623,7 +698,7 @@ class CrashDetector:
             "timestamp": datetime.now().isoformat(),
         })
         if len(self.risk_log) > 200:
-            self.risk_log = self.risk_log[-200:]
+            del self.risk_log[:len(self.risk_log) - 200]
 
         return result
 
@@ -663,6 +738,10 @@ class CrashDetector:
 
 class DualLink:
     """双链路通信 — device_chat主链路 + 网络心跳副链路"""
+    __slots__ = ['pc_id', 'phone_id', 'heartbeat_interval', 'heartbeat_timeout_sec',
+                 'primary_status', 'primary_latency_ms', 'secondary_status',
+                 'secondary_latency_ms', 'secondary_consecutive_failures',
+                 'link_state', 'pc_status', 'phone_status']
     LINK_STATES = {"FULL", "PRIMARY_ONLY", "SECONDARY_ONLY", "DEGRADED", "OFFLINE"}
     OFFLINE_THRESHOLD = 3
 
@@ -745,34 +824,32 @@ class DualLink:
         self._update_state()
 
     def _update_state(self):
-        """根据双链路状态计算整体状态"""
+        """根据双链路状态计算整体状态（优化：位运算加速状态判断）"""
         p_ok = self.primary_status == "ok"
         s_ok = self.secondary_status == "ok"
-        p_slow = self.primary_latency_ms > 5000 if p_ok else False
-        s_slow = self.secondary_latency_ms > 5000 if s_ok else False
-
-        if p_ok and s_ok:
-            if p_slow and s_slow:
-                self.link_state = "DEGRADED"
-            else:
-                self.link_state = "FULL"
-        elif p_ok and not s_ok:
+        # 用位标志代替多次布尔判断
+        state_flags = (p_ok << 1) | s_ok  # 3=both, 2=primary_only, 1=secondary_only, 0=offline
+        if state_flags == 3:
+            # 双链路都在线，检查是否降级
+            self.link_state = "DEGRADED" if (
+                self.primary_latency_ms > 5000 and self.secondary_latency_ms > 5000
+            ) else "FULL"
+        elif state_flags == 2:
             self.link_state = "PRIMARY_ONLY"
-        elif not p_ok and s_ok:
+        elif state_flags == 1:
             self.link_state = "SECONDARY_ONLY"
         else:
             self.link_state = "OFFLINE"
 
+    # 预定义 proximity 修正系数表
+    _PROXIMITY_MODIFIERS = {
+        "FULL": 1.0, "PRIMARY_ONLY": 1.0, "SECONDARY_ONLY": 0.5,
+        "DEGRADED": 0.3, "OFFLINE": 0.0,
+    }
+
     def get_proximity_modifier(self):
         """根据链路状态返回 proximity 修正系数"""
-        modifiers = {
-            "FULL": 1.0,
-            "PRIMARY_ONLY": 1.0,
-            "SECONDARY_ONLY": 0.5,
-            "DEGRADED": 0.3,
-            "OFFLINE": 0.0,
-        }
-        return modifiers.get(self.link_state, 0.0)
+        return self._PROXIMITY_MODIFIERS.get(self.link_state, 0.0)
 
     def is_device_reachable(self):
         """设备是否可达（任一链路可用）"""
@@ -1262,6 +1339,321 @@ def run_tests():
     term = dl.terminate()
     check_eq("terminate type", term["type"], "link_terminate")
     check_eq("terminate state PRIMARY_ONLY (only secondary terminated)", dl.link_state, "PRIMARY_ONLY")
+
+    # ============================================================
+    #  Module 11: AutoDeviceRegistration
+    # ============================================================
+    print("\n[Module 11] AutoDeviceRegistration")
+
+    class AutoDeviceRegistration:
+        DEVICE_TYPE_CAPS = {
+            "phone": ["sms", "call", "camera", "location", "alarm", "media", "notification", "contacts", "screenshot"],
+            "pc": ["code", "ide", "file", "browser", "text", "office", "search", "notification"],
+            "tablet": ["calendar", "media", "notification", "file", "search", "browser"],
+            "speaker": ["media", "notification", "tts"],
+            "display": ["media", "notification", "tts", "calendar", "file"],
+        }
+        DEVICE_TYPE_SCORES = {
+            "phone": {"sms": 0.95, "call": 0.90, "camera": 0.95, "location": 0.95, "alarm": 0.90,
+                       "media": 0.85, "notification": 0.80, "contacts": 0.85, "screenshot": 0.90},
+            "pc": {"code": 0.95, "ide": 0.95, "file": 0.90, "browser": 0.85, "text": 0.85,
+                    "office": 0.90, "search": 0.80, "notification": 0.70},
+            "tablet": {"calendar": 0.80, "media": 0.80, "notification": 0.75, "file": 0.70, "search": 0.70, "browser": 0.75},
+            "speaker": {"media": 0.90, "notification": 0.80, "tts": 0.95},
+            "display": {"media": 0.85, "notification": 0.80, "tts": 0.90, "calendar": 0.75, "file": 0.70},
+        }
+
+        def __init__(self):
+            self.registered_devices = {}
+            self.discovery_log = []
+
+        def discover(self, online_devices):
+            # 使用 set 交集运算加速查找新设备
+            registered_ids = set(self.registered_devices.keys())
+            return [dev for dev in online_devices if dev["device_id"] not in registered_ids]
+
+        def probe(self, device_info):
+            dtype = device_info.get("device_type", "phone")
+            caps = self.DEVICE_TYPE_CAPS.get(dtype, [])
+            scores = self.DEVICE_TYPE_SCORES.get(dtype, {})
+            return {"capabilities": caps, "scores": scores, "probe_status": "success"}
+
+        def register(self, device_info, probe_result):
+            did = device_info["device_id"]
+            self.registered_devices[did] = {
+                "device_id": did,
+                "device_name": device_info.get("device_name", "unknown"),
+                "device_type": device_info.get("device_type", "phone"),
+                "capabilities": probe_result["capabilities"],
+                "capability_scores": probe_result["scores"],
+                "probe_status": probe_result["probe_status"],
+            }
+            self.discovery_log.append({"device_id": did, "action": "registered"})
+            return self.registered_devices[did]
+
+        def get_device(self, did):
+            return self.registered_devices.get(did)
+
+        def is_registered(self, did):
+            return did in self.registered_devices
+
+        def unregister(self, did):
+            if did in self.registered_devices:
+                del self.registered_devices[did]
+                self.discovery_log.append({"device_id": did, "action": "unregistered"})
+                return True
+            return False
+
+    adr = AutoDeviceRegistration()
+
+    # Discover new devices
+    online = [
+        {"device_id": "phone-01", "device_name": "xiaomi14", "device_type": "phone"},
+        {"device_id": "pc-01", "device_name": "DESKTOP-PC", "device_type": "pc"},
+    ]
+    new_devs = adr.discover(online)
+    check_eq("discover 2 new devices", len(new_devs), 2)
+    check_eq("first new is phone-01", new_devs[0]["device_id"], "phone-01")
+
+    # Probe capabilities
+    probe_result = adr.probe(online[0])
+    check_eq("probe phone type", probe_result["probe_status"], "success")
+    check_true("phone has sms", "sms" in probe_result["capabilities"])
+    check_true("phone no tts", "tts" not in probe_result["capabilities"])
+
+    probe_pc = adr.probe(online[1])
+    check_true("pc has code", "code" in probe_pc["capabilities"])
+    check_true("pc has ide", "ide" in probe_pc["capabilities"])
+
+    # Register devices
+    reg1 = adr.register(online[0], probe_result)
+    check_eq("registered phone-01", reg1["device_id"], "phone-01")
+    check_eq("phone capabilities count", len(reg1["capabilities"]), 9)
+    check_true("phone is registered", adr.is_registered("phone-01"))
+
+    reg2 = adr.register(online[1], probe_pc)
+    check_eq("registered pc-01", reg2["device_id"], "pc-01")
+    check_true("pc is registered", adr.is_registered("pc-01"))
+
+    # Re-discover (should find 0 new)
+    new_devs2 = adr.discover(online)
+    check_eq("re-discover 0 new", len(new_devs2), 0)
+
+    # Probe tablet type
+    tablet_info = {"device_id": "tablet-01", "device_name": "xiaomi-tablet-6", "device_type": "tablet"}
+    probe_tablet = adr.probe(tablet_info)
+    check_true("tablet has calendar", "calendar" in probe_tablet["capabilities"])
+    check_true("tablet has media", "media" in probe_tablet["capabilities"])
+    check_true("tablet no sms", "sms" not in probe_tablet["capabilities"])
+
+    reg_tablet = adr.register(tablet_info, probe_tablet)
+    check_eq("registered tablet", reg_tablet["device_id"], "tablet-01")
+
+    # Probe speaker type
+    speaker_info = {"device_id": "speaker-01", "device_name": "xiaomi-speaker-pro", "device_type": "speaker"}
+    probe_speaker = adr.probe(speaker_info)
+    check_true("speaker has tts", "tts" in probe_speaker["capabilities"])
+    check_true("speaker has media", "media" in probe_speaker["capabilities"])
+    check_true("speaker no code", "code" not in probe_speaker["capabilities"])
+
+    reg_speaker = adr.register(speaker_info, probe_speaker)
+    check_eq("registered speaker", reg_speaker["device_id"], "speaker-01")
+
+    # Probe display type
+    display_info = {"device_id": "display-01", "device_name": "xiaomi-smart-display", "device_type": "display"}
+    probe_display = adr.probe(display_info)
+    check_true("display has tts", "tts" in probe_display["capabilities"])
+    check_true("display has calendar", "calendar" in probe_display["capabilities"])
+
+    reg_display = adr.register(display_info, probe_display)
+    check_eq("registered display", reg_display["device_id"], "display-01")
+
+    # Get device
+    got = adr.get_device("phone-01")
+    check_eq("get device phone", got["device_name"], "xiaomi14")
+    check_true("get non-existent is None", adr.get_device("nonexistent") is None)
+
+    # Unregister
+    check_true("unregister tablet", adr.unregister("tablet-01"))
+    check_true("tablet no longer registered", not adr.is_registered("tablet-01"))
+    check_true("unregister non-existent fails", not adr.unregister("nonexistent"))
+
+    # Discovery log
+    check_true("discovery log has entries", len(adr.discovery_log) > 0)
+
+    # ============================================================
+    #  Module 12: VoiceNotificationRelay
+    # ============================================================
+    print("\n[Module 12] VoiceNotificationRelay")
+
+    class VoiceNotificationRelay:
+        VOICE_CAPABLE_TYPES = {"speaker", "display", "phone"}
+        TTS_CAPABLE_TYPES = {"speaker", "display", "phone"}
+
+        def __init__(self):
+            self.log = []
+            self.dedup_window_ms = 300000
+
+        def get_voice_capable_devices(self, registered_devices):
+            # 使用列表推导式替代手动循环
+            return [dev for dev in registered_devices.values()
+                    if dev["device_type"] in self.VOICE_CAPABLE_TYPES]
+
+        def compute_voice_score(self, device, user_proximity=None):
+            dtype = device["device_type"]
+            if dtype == "speaker":
+                cap_score = 1.0
+            elif dtype == "display":
+                cap_score = 0.9
+            elif dtype == "phone":
+                cap_score = 0.6
+            else:
+                cap_score = 0.0
+            status_score = 0.8
+            proximity_score = user_proximity if user_proximity is not None else 0.5
+            if dtype == "speaker":
+                quality_score = 1.0
+            elif dtype == "display":
+                quality_score = 0.7
+            elif dtype == "phone":
+                quality_score = 0.5
+            else:
+                quality_score = 0.0
+            return cap_score * 0.35 + status_score * 0.25 + proximity_score * 0.25 + quality_score * 0.15
+
+        def select_best_device(self, registered_devices, user_proximity=None):
+            voice_devs = self.get_voice_capable_devices(registered_devices)
+            if not voice_devs:
+                return None
+            best = None
+            best_score = -1
+            for dev in voice_devs:
+                score = self.compute_voice_score(dev, user_proximity)
+                if score > best_score:
+                    best_score = score
+                    best = dev
+            if best_score < 0.3:
+                return None
+            return {"device": best, "score": round(best_score, 4)}
+
+        def generate_tts_text(self, event_type, task_name="", result_summary="", error_message=""):
+            if event_type == "task_completed":
+                return "Task {} completed. {}".format(task_name, result_summary)
+            elif event_type == "task_failed":
+                return "Task {} failed. {}".format(task_name, error_message)
+            elif event_type == "crash_risk":
+                return "Warning: crash risk detected. {}".format(error_message)
+            return ""
+
+        # 预编译正则表达式，避免每次调用都重新编译
+        _RE_SPECIAL_CHARS = re.compile(r'[#*`~\[\]{}]')
+        _RE_FILE_PATH = re.compile(r'/[\w/.-]+')
+
+        def optimize_for_tts(self, text):
+            text = self._RE_SPECIAL_CHARS.sub('', text)
+            text = self._RE_FILE_PATH.sub('file', text)
+            if len(text) > 200:
+                text = text[:197] + "..."
+            return text
+
+        def create_notification(self, target_device, event_type, task_name="", result_summary="", error_message=""):
+            tts_text = self.generate_tts_text(event_type, task_name, result_summary, error_message)
+            optimized = self.optimize_for_tts(tts_text)
+            dtype = target_device["device_type"]
+            if dtype in self.TTS_CAPABLE_TYPES:
+                method = "tts"
+            else:
+                method = "notification"
+            notif = {
+                "type": "voice_notification",
+                "device_id": target_device["device_id"],
+                "event": event_type,
+                "tts_text": optimized,
+                "method": method,
+                "priority": "urgent" if event_type == "crash_risk" else "normal",
+            }
+            self.log.append(notif)
+            return notif
+
+        def is_duplicate(self, task_id):
+            for entry in self.log:
+                if entry.get("task_id") == task_id:
+                    return True
+            return False
+
+    vnr = VoiceNotificationRelay()
+
+    # Get voice capable devices from ADR registry
+    voice_devs = vnr.get_voice_capable_devices(adr.registered_devices)
+    check_eq("voice capable devices count", len(voice_devs), 3)  # phone, speaker, display (tablet was unregistered)
+
+    # Voice score computation
+    speaker_dev = adr.get_device("speaker-01")
+    phone_dev = adr.get_device("phone-01")
+    display_dev = adr.get_device("display-01")
+
+    speaker_score = vnr.compute_voice_score(speaker_dev)
+    phone_score = vnr.compute_voice_score(phone_dev)
+    display_score = vnr.compute_voice_score(display_dev)
+    check_true("speaker score > phone score", speaker_score > phone_score)
+    check_true("speaker score > display score", speaker_score > display_score)
+
+    # Select best device
+    best = vnr.select_best_device(adr.registered_devices)
+    check_eq("best device is speaker", best["device"]["device_id"], "speaker-01")
+    check_true("best score > 0.5", best["score"] > 0.5)
+
+    # Select with user proximity
+    best_phone = vnr.select_best_device(adr.registered_devices, user_proximity=0.9)
+    check_true("best with proximity has score", best_phone["score"] > 0)
+
+    # Generate TTS text
+    tts1 = vnr.generate_tts_text("task_completed", "Excel Report", "3 sheets, 5 charts")
+    check_true("tts completed has task name", "Excel Report" in tts1)
+    check_true("tts completed has result", "3 sheets" in tts1)
+
+    tts2 = vnr.generate_tts_text("task_failed", "Video Transcode", error_message="format not supported")
+    check_true("tts failed has error", "format not supported" in tts2)
+
+    tts3 = vnr.generate_tts_text("crash_risk", error_message="memory low")
+    check_true("tts crash has warning", "Warning" in tts3)
+
+    # Optimize for TTS
+    raw = "# Report `/home/user/file.txt` done **bold** [link]"
+    optimized = vnr.optimize_for_tts(raw)
+    check_true("optimized removes #", "#" not in optimized)
+    check_true("optimized removes backtick", "`" not in optimized)
+    check_true("optimized removes bold", "**" not in optimized)
+    check_true("optimized removes path", "/home/user" not in optimized)
+
+    # Long text truncation
+    long_text = "a" * 300
+    truncated = vnr.optimize_for_tts(long_text)
+    check_eq("long text truncated to 200", len(truncated), 200)
+
+    # Create notification
+    notif = vnr.create_notification(speaker_dev, "task_completed", "Excel Report", "5 charts")
+    check_eq("notif type", notif["type"], "voice_notification")
+    check_eq("notif device", notif["device_id"], "speaker-01")
+    check_eq("notif method", notif["method"], "tts")
+    check_eq("notif priority", notif["priority"], "normal")
+
+    # Crash risk notification (urgent)
+    notif2 = vnr.create_notification(phone_dev, "crash_risk", error_message="CPU overload")
+    check_eq("crash notif priority", notif2["priority"], "urgent")
+    check_eq("crash notif method", notif2["method"], "tts")
+
+    # Display notification
+    notif3 = vnr.create_notification(display_dev, "task_completed", "PDF Report", "generated")
+    check_eq("display notif method", notif3["method"], "tts")
+
+    # Log has entries
+    check_true("notification log has entries", len(vnr.log) >= 3)
+
+    # Empty voice devices scenario
+    empty_vnr = VoiceNotificationRelay()
+    empty_best = empty_vnr.select_best_device({})
+    check_true("no voice devices returns None", empty_best is None)
 
     # -- Summary --
     print("\n" + "=" * 50)

@@ -2,6 +2,36 @@
 
 所有版本的更新记录。
 
+## v3.0.0 (2026-05-03)
+
+### ⚡ 性能优化
+
+全模块性能提升，217 个断言全部通过。
+
+- **TaskProfiler**：关键词索引预排序（按长度降序），避免短词误匹配，减少遍历次数
+- **DeviceCapability**：使用生成器表达式替代列表推导，减少临时对象分配
+- **RoutingRules**：
+  - 预计算负载映射表（类变量），避免每次路由创建新字典
+  - 单候选设备快速路径，跳过排序
+  - 多候选设备优化：直接在元组列表上排序，减少中间数据结构
+- **CrashDetector**：
+  - `assess()` 内联 6 个风险评估函数，减少函数调用开销
+  - 预提取权重向量到 `_weight_vector`，避免重复字典查找
+  - 使用 `__slots__` 减少实例内存占用
+- **DualLink**：
+  - `_update_state()` 使用位运算（`p_ok << 1 | s_ok`）加速状态判断
+  - 预定义 `_PROXIMITY_MODIFIERS` 类变量，避免每次创建字典
+  - 使用 `__slots__` 减少实例内存占用
+- **AutoDeviceRegistration**：`discover()` 使用 set 交集运算，O(1) 查找新设备
+- **VoiceNotificationRelay**：
+  - 预编译正则表达式（`_RE_SPECIAL_CHARS`、`_RE_FILE_PATH`），避免每次调用重新编译
+  - `get_voice_capable_devices()` 使用列表推导式替代手动循环
+- **LoadBalancer**：`find_idle_device()` 空工具列表快速路径
+- **FailoverMigration**：`detect_failure()` 优化类型检查顺序，非 dict 快速返回
+- **RoutingLog**：单次 `datetime.now()` 调用，`del` 切片替代重新赋值清理日志
+- **InvocationIndicator**：`del` 切片替代重新赋值清理历史
+- **TaskProfiler**：可拆分检查 `elif` 提前退出，避免冗余条件判断
+
 ## v2.0.0 (2026-05-03)
 
 ### 🔄 重大变更

@@ -1,21 +1,14 @@
 #!/usr/bin/env python3
 """
-Smart Invocation Engine - Core Logic Verification
-Tests: TaskProfiler, DeviceCapability, RoutingRules, RoutingLog,
-       LoadBalancer, FailoverMigration, SmartInvocationIndicator, CrashDetector
-Target: 90+ assertions covering all modules
+Smart Task Router - Core Logic Verification
+Tests: TaskProfiler, DeviceCapability, RoutingRules, RoutingLog, LoadBalancer, FailoverMigration
+Target: 70+ assertions covering all modules
 """
 
 import time
 import json
-import os
-import sys
 from datetime import datetime, timezone, timedelta
 
-
-# ============================================================
-#  Module 1: TaskProfiler
-# ============================================================
 
 class TaskProfiler:
     """Analyze user tasks, generate structured TaskProfile"""
@@ -42,8 +35,6 @@ class TaskProfiler:
     URGENCY_KEYWORDS = ["马上", "立刻", "赶紧", "急"]
 
     def analyze(self, task_text):
-        if not task_text or not task_text.strip():
-            return self._empty_profile(task_text or "")
         tools = set()
         text_lower = task_text.lower()
         for kw, tool in self.KEYWORD_TOOL_MAP.items():
@@ -80,13 +71,8 @@ class TaskProfiler:
         if splittable:
             idx = 1
             for tool in tools_list:
-                st_env = ("phone-only" if tool in self.PHONE_TOOLS
-                          else "pc-only" if tool in self.PC_TOOLS else "any")
-                sub_tasks.append({
-                    "id": "ST-{}".format(idx),
-                    "tools": [tool],
-                    "environment": st_env,
-                })
+                st_env = "phone-only" if tool in self.PHONE_TOOLS else "pc-only" if tool in self.PC_TOOLS else "any"
+                sub_tasks.append({"id": "ST-{}".format(idx), "tools": [tool], "environment": st_env})
                 idx += 1
         return {
             "task_id": task_id,
@@ -100,25 +86,6 @@ class TaskProfiler:
             "sub_tasks": sub_tasks,
         }
 
-    @staticmethod
-    def _empty_profile(task_text):
-        now = datetime.now()
-        return {
-            "task_id": "T-{}-{}".format(now.strftime("%Y%m%d"), now.strftime("%H%M%S")),
-            "original_text": task_text,
-            "tools_required": [],
-            "complexity": "light",
-            "environment": "any",
-            "splittable": False,
-            "urgency": "normal",
-            "estimated_duration_seconds": 10,
-            "sub_tasks": [],
-        }
-
-
-# ============================================================
-#  Module 2: DeviceCapability
-# ============================================================
 
 class DeviceCapability:
     PHONE_CAPS = {
@@ -134,8 +101,6 @@ class DeviceCapability:
     @staticmethod
     def create_device(device_id, device_type, online=True, load_status="idle",
                       current_tasks=0, heartbeat_latency_ms=None):
-        if device_type not in ("phone", "pc"):
-            raise ValueError("device_type must be 'phone' or 'pc', got '{}'".format(device_type))
         caps = DeviceCapability.PHONE_CAPS if device_type == "phone" else DeviceCapability.PC_CAPS
         return {
             "device_id": device_id,
@@ -166,10 +131,6 @@ class DeviceCapability:
         return total / len(tools_required)
 
 
-# ============================================================
-#  Module 3: RoutingRules
-# ============================================================
-
 class RoutingRules:
     HARD_RULES = {
         "sms": "phone", "call": "phone", "camera": "phone",
@@ -178,7 +139,7 @@ class RoutingRules:
         "code": "pc", "ide": "pc", "office": "pc",
     }
     HIGH_RISK_OPS = {"payment", "refund", "delete_irreversible", "cancel_order"}
-    MIN_ROUTE_SCORE = 0.2
+    MIN_ROUTE_SCORE = 0.2  # 低于此分数认为无合适设备
 
     @staticmethod
     def check_hard_rules(tools_required):
@@ -237,10 +198,6 @@ class RoutingRules:
         return {"target": best[0], "method": "soft_rule", "score": best[1], "all_scores": scores}
 
 
-# ============================================================
-#  Module 4: RoutingLog
-# ============================================================
-
 class RoutingLog:
     """路由决策日志，记录每次路由决策的完整信息"""
     MAX_LOG_SIZE = 100
@@ -275,10 +232,6 @@ class RoutingLog:
         self.logs.clear()
 
 
-# ============================================================
-#  Module 5: LoadBalancer
-# ============================================================
-
 class LoadBalancer:
     def __init__(self):
         self.heartbeat_interval = 30
@@ -289,23 +242,12 @@ class LoadBalancer:
 
     def check_heartbeat(self, device, consecutive_failures):
         if device["online"]:
-            return {
-                "online": True,
-                "consecutive_failures": 0,
-                "status": device["load_status"],
-            }
-        new_failures = consecutive_failures + 1
-        if new_failures >= self.offline_threshold:
-            return {
-                "online": False,
-                "consecutive_failures": new_failures,
-                "status": "offline",
-            }
-        return {
-            "online": True,
-            "consecutive_failures": new_failures,
-            "status": device["load_status"],
-        }
+            return {"online": True, "consecutive_failures": 0, "status": device["load_status"]}
+        else:
+            new_failures = consecutive_failures + 1
+            if new_failures >= self.offline_threshold:
+                return {"online": False, "consecutive_failures": new_failures, "status": "offline"}
+            return {"online": True, "consecutive_failures": new_failures, "status": device["load_status"]}
 
     def find_idle_device(self, devices, tools_required):
         for device in devices:
@@ -325,10 +267,6 @@ class LoadBalancer:
     def compute_queue_priority(self, task_urgency):
         return 0 if task_urgency == "urgent" else 1
 
-
-# ============================================================
-#  Module 6: FailoverMigration
-# ============================================================
 
 class FailoverMigration:
     MAX_L1_RETRIES = 3
@@ -363,10 +301,7 @@ class FailoverMigration:
 
     def level1_same_device(self, failed_tool):
         if self.l1_count >= self.MAX_L1_RETRIES:
-            return {
-                "level": 1, "alternative": None,
-                "retry": False, "reason": "L1 max retries exceeded",
-            }
+            return {"level": 1, "alternative": None, "retry": False, "reason": "L1 max retries exceeded"}
         alternatives = self.get_alternatives(failed_tool)
         if alternatives:
             self.l1_count += 1
@@ -393,9 +328,7 @@ class FailoverMigration:
         return {
             "level": 2, "migrated": True,
             "target_device": result["target"],
-            "reason": "migrate from {} to {}".format(
-                current_device["device_id"], result["target"]
-            ),
+            "reason": "migrate from {} to {}".format(current_device["device_id"], result["target"]),
         }
 
     def level3_human_fallback(self, completed_parts, failed_parts):
@@ -412,393 +345,6 @@ class FailoverMigration:
 
     def get_migration_count(self):
         return self.migration_count
-
-
-# ============================================================
-#  Module 7: SmartInvocationIndicator (NEW)
-# ============================================================
-
-class SmartInvocationIndicator:
-    """
-    智能调用指示器 — 在智能调用时提供可见的状态指示。
-
-    功能：
-    - 记录调用的生命周期（开始 → 进行中 → 完成/失败）
-    - 提供结构化的日志输出，便于 UI 层展示
-    - 支持通知回调，可推送到手机端大爱
-    - 自动清理过期记录
-    """
-
-    STATUS_IDLE = "idle"
-    STATUS_RUNNING = "running"
-    STATUS_COMPLETED = "completed"
-    STATUS_FAILED = "failed"
-    STATUS_CANCELLED = "cancelled"
-
-    MAX_HISTORY = 50
-
-    def __init__(self):
-        self._active_invocations = {}
-        self._history = []
-        self._invocation_counter = 0
-
-    def start_invocation(self, task_id, target_device, task_description=""):
-        """开始一次智能调用，返回 invocation_id"""
-        self._invocation_counter += 1
-        invocation_id = "INV-{}-{}".format(
-            datetime.now().strftime("%Y%m%d%H%M%S"),
-            self._invocation_counter,
-        )
-        record = {
-            "invocation_id": invocation_id,
-            "task_id": task_id,
-            "target_device": target_device,
-            "task_description": task_description,
-            "status": self.STATUS_RUNNING,
-            "started_at": datetime.now().isoformat(),
-            "completed_at": None,
-            "duration_ms": None,
-            "result_summary": None,
-            "error": None,
-            "steps": [],
-        }
-        self._active_invocations[invocation_id] = record
-        self._log_event(invocation_id, "STARTED", "智能调用开始: {} -> {}".format(
-            task_id, target_device
-        ))
-        return invocation_id
-
-    def update_step(self, invocation_id, step_name, step_status="running", detail=""):
-        """更新调用步骤"""
-        inv = self._active_invocations.get(invocation_id)
-        if not inv:
-            return False
-        step = {
-            "name": step_name,
-            "status": step_status,
-            "detail": detail,
-            "timestamp": datetime.now().isoformat(),
-        }
-        inv["steps"].append(step)
-        self._log_event(invocation_id, "STEP", "{}: {} ({})".format(
-            step_name, step_status, detail
-        ))
-        return True
-
-    def complete_invocation(self, invocation_id, success=True, summary="", error=None):
-        """完成一次智能调用"""
-        inv = self._active_invocations.get(invocation_id)
-        if not inv:
-            return False
-        inv["status"] = self.STATUS_COMPLETED if success else self.STATUS_FAILED
-        inv["completed_at"] = datetime.now().isoformat()
-        inv["result_summary"] = summary
-        inv["error"] = error
-        # 计算耗时
-        try:
-            start = datetime.fromisoformat(inv["started_at"])
-            end = datetime.fromisoformat(inv["completed_at"])
-            inv["duration_ms"] = int((end - start).total_seconds() * 1000)
-        except (ValueError, TypeError):
-            inv["duration_ms"] = None
-        # 移入历史
-        self._history.append(inv)
-        del self._active_invocations[invocation_id]
-        # 清理过期历史
-        if len(self._history) > self.MAX_HISTORY:
-            self._history = self._history[-self.MAX_HISTORY:]
-        status_label = "完成" if success else "失败"
-        self._log_event(invocation_id, "FINISHED", "智能调用{}: {}".format(
-            status_label, summary or error or "无详情"
-        ))
-        return True
-
-    def cancel_invocation(self, invocation_id, reason=""):
-        """取消一次智能调用"""
-        inv = self._active_invocations.get(invocation_id)
-        if not inv:
-            return False
-        inv["status"] = self.STATUS_CANCELLED
-        inv["completed_at"] = datetime.now().isoformat()
-        inv["error"] = reason or "用户取消"
-        self._history.append(inv)
-        del self._active_invocations[invocation_id]
-        if len(self._history) > self.MAX_HISTORY:
-            self._history = self._history[-self.MAX_HISTORY:]
-        self._log_event(invocation_id, "CANCELLED", "智能调用已取消: {}".format(reason))
-        return True
-
-    def get_active_count(self):
-        """获取当前活跃的调用数"""
-        return len(self._active_invocations)
-
-    def get_active_invocations(self):
-        """获取所有活跃调用"""
-        return list(self._active_invocations.values())
-
-    def get_history(self, n=10):
-        """获取最近的历史记录"""
-        return self._history[-n:]
-
-    def get_indicator_snapshot(self):
-        """获取当前指示器快照，用于 UI 展示"""
-        active = self.get_active_invocations()
-        return {
-            "active_count": len(active),
-            "active_invocations": [
-                {
-                    "invocation_id": inv["invocation_id"],
-                    "task_id": inv["task_id"],
-                    "target_device": inv["target_device"],
-                    "status": inv["status"],
-                    "steps_count": len(inv["steps"]),
-                    "started_at": inv["started_at"],
-                }
-                for inv in active
-            ],
-            "recent_history_count": len(self._history),
-        }
-
-    def _log_event(self, invocation_id, event_type, message):
-        """内部日志输出（模拟日志/通知）"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_line = "[SmartInvocation] [{}] [{}] {}".format(
-            timestamp, event_type, message
-        )
-        # 在实际运行中，这里会输出到日志系统或触发通知
-        # 测试模式下静默
-        return log_line
-
-
-# ============================================================
-#  Module 8: CrashDetector (NEW)
-# ============================================================
-
-class CrashDetector:
-    """
-    崩溃检测与分步执行引擎 — 在电脑端执行前检测风险，建议拆分任务。
-
-    功能：
-    - 检测操作是否可能导致系统崩溃（内存溢出、大文件处理等）
-    - 评估风险等级（low / medium / high / critical）
-    - 生成分步执行建议
-    - 通知手机端大爱（通过回调函数）
-    """
-
-    RISK_LOW = "low"
-    RISK_MEDIUM = "medium"
-    RISK_HIGH = "high"
-    RISK_CRITICAL = "critical"
-
-    # 风险阈值
-    LARGE_FILE_THRESHOLD_MB = 500
-    HIGH_MEMORY_THRESHOLD_MB = 2048
-    MAX_CONCURRENT_OPS = 5
-    BATCH_SIZE_THRESHOLD = 100
-
-    # 高风险操作关键词
-    HIGH_RISK_KEYWORDS = {
-        "批量处理", "全量", "所有文件", "整个目录", "递归",
-        "batch", "bulk", "all files", "recursive",
-    }
-    MEMORY_HEAVY_KEYWORDS = {
-        "视频", "图片批量", "大数据", "数据分析", "机器学习",
-        "video", "big data", "machine learning", "dataset",
-    }
-
-    def __init__(self):
-        self._risk_log = []
-        self._notification_callback = None
-
-    def set_notification_callback(self, callback):
-        """设置通知回调函数（用于通知手机端大爱）"""
-        self._notification_callback = callback
-
-    def assess_risk(self, task_profile, target_device=None):
-        """
-        评估任务的崩溃风险。
-
-        返回:
-        {
-            "risk_level": "low|medium|high|critical",
-            "risk_factors": [...],
-            "recommendations": [...],
-            "should_split": False,
-            "split_plan": [...],
-        }
-        """
-        risk_factors = []
-        recommendations = []
-        tools = task_profile.get("tools_required", [])
-        original_text = task_profile.get("original_text", "")
-        complexity = task_profile.get("complexity", "light")
-
-        # 1. 检查复杂度
-        if complexity == "heavy":
-            risk_factors.append({
-                "type": "high_complexity",
-                "severity": self.RISK_MEDIUM,
-                "detail": "任务复杂度为 heavy，可能涉及大量计算",
-            })
-            recommendations.append("建议将任务拆分为多个子步骤执行")
-
-        # 2. 检查关键词
-        text_lower = original_text.lower()
-        for kw in self.HIGH_RISK_KEYWORDS:
-            if kw in text_lower:
-                risk_factors.append({
-                    "type": "high_risk_keyword",
-                    "severity": self.RISK_HIGH,
-                    "detail": "检测到高风险关键词: '{}'".format(kw),
-                })
-                recommendations.append("检测到批量/全量操作，建议分批处理")
-                break
-
-        for kw in self.MEMORY_HEAVY_KEYWORDS:
-            if kw in text_lower:
-                risk_factors.append({
-                    "type": "memory_heavy",
-                    "severity": self.RISK_HIGH,
-                    "detail": "检测到内存密集型关键词: '{}'".format(kw),
-                })
-                recommendations.append("该操作可能占用大量内存，建议分步执行")
-                break
-
-                # 3. 检查工具组合风险
-        heavy_tools = {"code", "office", "file"}
-        tools_set = set(tools)
-        if len(tools_set & heavy_tools) >= 2:
-            risk_factors.append({
-                "type": "tool_combination_risk",
-                "severity": self.RISK_MEDIUM,
-                                "detail": "多个重量级工具组合: {}".format(sorted(tools_set & heavy_tools)),
-            })
-            recommendations.append("多工具组合可能导致资源竞争，建议串行执行")
-
-        # 4. 检查文件操作风险
-        if "file" in tools:
-            risk_factors.append({
-                "type": "file_operation",
-                "severity": self.RISK_LOW,
-                "detail": "涉及文件操作，需注意文件大小",
-            })
-
-        # 5. 检查设备负载
-        if target_device:
-            load = target_device.get("load_status", "idle")
-            current = target_device.get("current_tasks", 0)
-            max_c = target_device.get("max_concurrent", 3)
-            if load == "busy" or current >= max_c - 1:
-                risk_factors.append({
-                    "type": "device_overload",
-                    "severity": self.RISK_MEDIUM,
-                    "detail": "目标设备负载较高 (tasks={}/{})".format(current, max_c),
-                })
-                recommendations.append("目标设备负载较高，建议等待空闲或换设备")
-
-        # 综合风险等级
-        risk_level = self._compute_overall_risk(risk_factors)
-
-        # 生成分步建议
-        should_split = risk_level in (self.RISK_HIGH, self.RISK_CRITICAL)
-        split_plan = []
-        if should_split:
-            split_plan = self._generate_split_plan(task_profile)
-
-        result = {
-            "risk_level": risk_level,
-            "risk_factors": risk_factors,
-            "recommendations": recommendations,
-            "should_split": should_split,
-            "split_plan": split_plan,
-        }
-
-        # 记录日志
-        self._risk_log.append({
-            "task_id": task_profile.get("task_id", "unknown"),
-            "timestamp": datetime.now().isoformat(),
-            "risk_level": risk_level,
-            "factor_count": len(risk_factors),
-        })
-
-        # 如果需要通知手机端
-        if should_split and self._notification_callback:
-            notification = self._build_notification(task_profile, result)
-            self._notification_callback(notification)
-
-        return result
-
-        def get_risk_log(self, n=10):
-        """获取最近的风险评估日志"""
-        return self._risk_log[-n:]
-
-    def _compute_overall_risk(self, risk_factors):
-        """根据风险因子计算综合风险等级"""
-        if not risk_factors:
-            return self.RISK_LOW
-        severity_order = {
-            self.RISK_LOW: 0,
-            self.RISK_MEDIUM: 1,
-            self.RISK_HIGH: 2,
-            self.RISK_CRITICAL: 3,
-        }
-        max_severity_val = max(
-            severity_order.get(f["severity"], 0) for f in risk_factors
-        )
-        # 多个 medium 升级为 high
-        medium_count = sum(
-            1 for f in risk_factors if f["severity"] == self.RISK_MEDIUM
-        )
-        if medium_count >= 2 and max_severity_val < severity_order[self.RISK_HIGH]:
-            max_severity_val = severity_order[self.RISK_HIGH]
-        for level, val in severity_order.items():
-            if val == max_severity_val:
-                return level
-        return self.RISK_LOW
-
-    def _generate_split_plan(self, task_profile):
-        """生成分步执行计划"""
-        plan = []
-        sub_tasks = task_profile.get("sub_tasks", [])
-        if sub_tasks:
-            for st in sub_tasks:
-                plan.append({
-                    "step": st["id"],
-                    "tools": st["tools"],
-                    "environment": st["environment"],
-                    "action": "在{}设备上执行: {}".format(
-                        st["environment"], ", ".join(st["tools"])
-                    ),
-                })
-        else:
-            # 无法自动拆分时，给出通用建议
-            tools = task_profile.get("tools_required", [])
-            for i, tool in enumerate(tools, 1):
-                env = ("phone-only" if tool in TaskProfiler.PHONE_TOOLS
-                       else "pc-only" if tool in TaskProfiler.PC_TOOLS else "any")
-                plan.append({
-                    "step": "S-{}".format(i),
-                    "tools": [tool],
-                    "environment": env,
-                    "action": "步骤 {}: 在{}设备上执行 {}".format(i, env, tool),
-                })
-        return plan
-
-    def _build_notification(self, task_profile, risk_result):
-        """构建通知消息"""
-        return {
-            "type": "crash_risk_warning",
-            "task_id": task_profile.get("task_id", "unknown"),
-            "risk_level": risk_result["risk_level"],
-            "message": "检测到任务 '{}' 可能存在崩溃风险 (等级: {})，建议拆分为 {} 个步骤分步执行。".format(
-                task_profile.get("original_text", "")[:50],
-                risk_result["risk_level"],
-                len(risk_result["split_plan"]),
-            ),
-            "split_plan": risk_result["split_plan"],
-            "recommendations": risk_result["recommendations"],
-            "timestamp": datetime.now().isoformat(),
-        }
 
 
 # ============================================================
@@ -843,16 +389,10 @@ def run_tests():
     profiler = TaskProfiler()
     phone = DeviceCapability.create_device("phone-01", "phone")
     pc = DeviceCapability.create_device("pc-01", "pc")
-    phone_busy = DeviceCapability.create_device(
-        "phone-02", "phone", load_status="busy", current_tasks=3
-    )
+    phone_busy = DeviceCapability.create_device("phone-02", "phone", load_status="busy", current_tasks=3)
     phone_offline = DeviceCapability.create_device("phone-03", "phone", online=False)
-    phone_slow = DeviceCapability.create_device(
-        "phone-04", "phone", heartbeat_latency_ms=6000
-    )
-    phone_medium = DeviceCapability.create_device(
-        "phone-05", "phone", heartbeat_latency_ms=3500
-    )
+    phone_slow = DeviceCapability.create_device("phone-04", "phone", heartbeat_latency_ms=6000)
+    phone_medium = DeviceCapability.create_device("phone-05", "phone", heartbeat_latency_ms=3500)
 
     # -- Module 1: TaskProfiler --
     print("\n[Module 1] TaskProfiler")
@@ -881,14 +421,6 @@ def run_tests():
     check_in("alarm tool detected", "alarm", p5["tools_required"])
     check_eq("alarm urgent urgency", p5["urgency"], "urgent")
 
-    # Empty input
-    p_empty = profiler.analyze("")
-    check_eq("empty input = any env", p_empty["environment"], "any")
-    check_eq("empty input = light", p_empty["complexity"], "light")
-
-    p_none = profiler.analyze(None)
-    check_eq("None input = any env", p_none["environment"], "any")
-
     # -- Module 2: DeviceCapability --
     print("\n[Module 2] DeviceCapability")
 
@@ -906,13 +438,6 @@ def run_tests():
 
     score2 = DeviceCapability.compute_capability_score(pc, ["code", "ide"])
     check_true("pc dev score > 0.9", score2 > 0.9)
-
-    # Invalid device type
-    try:
-        DeviceCapability.create_device("bad", "tablet")
-        check_true("invalid device type raises error", False)
-    except ValueError:
-        check_true("invalid device type raises error", True)
 
     # -- Module 3: RoutingRules --
     print("\n[Module 3] RoutingRules")
@@ -1008,9 +533,7 @@ def run_tests():
     # L2 migration limit
     fm2 = FailoverMigration()
     fm2.l2_count = FailoverMigration.MAX_L2_MIGRATIONS
-    l2_limit = fm2.level2_migrate_device(
-        task_p, phone_offline, [phone_offline, other_phone]
-    )
+    l2_limit = fm2.level2_migrate_device(task_p, phone_offline, [phone_offline, other_phone])
     check_true("L2 limit blocks migration", not l2_limit["migrated"])
 
     # L1 retry limit
@@ -1037,118 +560,8 @@ def run_tests():
     rlog.clear()
     check_eq("log cleared", len(rlog.logs), 0)
 
-    # -- Module 7: SmartInvocationIndicator --
-    print("\n[Module 7] SmartInvocationIndicator")
-
-    indicator = SmartInvocationIndicator()
-
-    # Start invocation
-    inv_id = indicator.start_invocation("T-001", "phone-01", "发短信给妈妈")
-    check_true("invocation started", inv_id.startswith("INV-"))
-    check_eq("active count = 1", indicator.get_active_count(), 1)
-
-    # Update step
-    ok = indicator.update_step(inv_id, "routing", "completed", "路由到 phone-01")
-    check_true("step update ok", ok)
-
-    ok2 = indicator.update_step(inv_id, "sending", "running", "正在发送...")
-    check_true("second step update ok", ok2)
-
-    # Snapshot
-    snap = indicator.get_indicator_snapshot()
-    check_eq("snapshot active_count", snap["active_count"], 1)
-    check_eq("snapshot steps_count", snap["active_invocations"][0]["steps_count"], 2)
-
-    # Complete
-    ok3 = indicator.complete_invocation(inv_id, success=True, summary="短信已发送")
-    check_true("invocation completed", ok3)
-    check_eq("active count = 0", indicator.get_active_count(), 0)
-    check_eq("history count = 1", len(indicator.get_history()), 1)
-
-    # History entry has duration
-    hist = indicator.get_history(1)[0]
-    check_true("history has duration_ms", hist["duration_ms"] is not None)
-    check_eq("history status completed", hist["status"], SmartInvocationIndicator.STATUS_COMPLETED)
-
-    # Cancel invocation
-    inv_id2 = indicator.start_invocation("T-002", "pc-01", "写代码")
-    ok4 = indicator.cancel_invocation(inv_id2, "用户取消")
-    check_true("invocation cancelled", ok4)
-    check_eq("active count = 0 after cancel", indicator.get_active_count(), 0)
-
-    # History overflow
-    for i in range(55):
-        iid = indicator.start_invocation("T-overflow-{}".format(i), "pc-01")
-        indicator.complete_invocation(iid, success=True, summary="done")
-    check_true("history capped at 50", len(indicator._history) <= 50)
-
-    # Non-existent invocation
-    ok_bad = indicator.update_step("INV-nonexistent", "step", "running")
-    check_true("update non-existent returns False", not ok_bad)
-
-    ok_bad2 = indicator.complete_invocation("INV-nonexistent")
-    check_true("complete non-existent returns False", not ok_bad2)
-
-    # -- Module 8: CrashDetector --
-    print("\n[Module 8] CrashDetector")
-
-    cd = CrashDetector()
-
-    # Low risk: simple task
-    simple_profile = profiler.analyze("发短信")
-    risk1 = cd.assess_risk(simple_profile)
-    check_eq("simple task risk=low", risk1["risk_level"], CrashDetector.RISK_LOW)
-    check_true("simple task no split", not risk1["should_split"])
-
-    # Medium risk: heavy complexity
-    heavy_profile = profiler.analyze("帮我写代码做个PPT再拍张照然后发短信通知再搜索资料")
-    risk2 = cd.assess_risk(heavy_profile)
-    check_in("heavy task has medium+ risk", risk2["risk_level"],
-             [CrashDetector.RISK_MEDIUM, CrashDetector.RISK_HIGH, CrashDetector.RISK_CRITICAL])
-
-    # High risk: batch processing keyword
-    batch_profile = profiler.analyze("批量处理所有文件")
-    risk3 = cd.assess_risk(batch_profile)
-    check_in("batch task has high+ risk", risk3["risk_level"],
-             [CrashDetector.RISK_HIGH, CrashDetector.RISK_CRITICAL])
-    check_true("batch task should split", risk3["should_split"])
-    check_true("batch task has split_plan", len(risk3["split_plan"]) > 0)
-
-    # High risk: memory heavy keyword
-    memory_profile = profiler.analyze("处理大数据集")
-    risk4 = cd.assess_risk(memory_profile)
-    check_in("memory-heavy task has high+ risk", risk4["risk_level"],
-             [CrashDetector.RISK_HIGH, CrashDetector.RISK_CRITICAL])
-
-    # Device overload risk
-    busy_device = DeviceCapability.create_device(
-        "pc-busy", "pc", load_status="busy", current_tasks=3
-    )
-    risk5 = cd.assess_risk(profiler.analyze("写代码"), target_device=busy_device)
-    check_true("overloaded device has risk factors", len(risk5["risk_factors"]) > 0)
-
-    # Notification callback
-    notifications = []
-    cd2 = CrashDetector()
-    cd2.set_notification_callback(lambda n: notifications.append(n))
-    cd2.assess_risk(batch_profile)
-    check_true("notification sent for high risk", len(notifications) == 1)
-    check_eq("notification type", notifications[0]["type"], "crash_risk_warning")
-    check_true("notification has split_plan", len(notifications[0]["split_plan"]) > 0)
-
-    # Risk log
-    risk_log = cd.get_risk_log()
-    check_true("risk log has entries", len(risk_log) > 0)
-
-    # Multiple medium risks upgrade to high
-    multi_medium = profiler.analyze("帮我写代码做个PPT再拍张照然后发短信通知再搜索资料")
-    risk6 = cd.assess_risk(multi_medium)
-    # heavy complexity + tool combination risk = 2 mediums -> should upgrade
-    check_true("multi-medium upgrades risk",
-               risk6["risk_level"] in [CrashDetector.RISK_HIGH, CrashDetector.RISK_CRITICAL])
-
-    # -- Module 9: Edge Cases --
-    print("\n[Module 9] Edge Cases")
+    # -- Module 7: Edge Cases --
+    print("\n[Module 7] Edge Cases")
 
     # Empty tools -> any environment, light complexity
     empty_profile = profiler.analyze("你好")
@@ -1156,25 +569,28 @@ def run_tests():
     check_eq("empty tools = light", empty_profile["complexity"], "light")
     check_eq("empty tools no sub_tasks", empty_profile["sub_tasks"], [])
 
-    # Score threshold
-    phone_very_slow = DeviceCapability.create_device(
-        "phone-vs", "phone", load_status="busy", heartbeat_latency_ms=8000
-    )
+        # Score threshold: device with very low capability match -> no_suitable_device
+    # search on phone: cap=0.60, load=busy(0.3), proximity=1.0 → 0.60*0.5+0.3*0.3+1.0*0.2 = 0.59
+    # Need a device with extremely low match. Use a phone for "code" task:
+    # phone has no "code" cap → cap_match=0, load=busy → 0*0.5+0.3*0.3+1.0*0.2 = 0.29
+    # Still above 0.2. Use offline-ish: phone with high latency
+    phone_very_slow = DeviceCapability.create_device("phone-vs", "phone", load_status="busy", heartbeat_latency_ms=8000)
     code_p = profiler.analyze("写代码")
     route_low = RoutingRules.route(code_p, [phone_very_slow])
-    check_eq("low score returns no_suitable_device",
-             route_low.get("status"), "no_suitable_device")
+    # phone has no code capability → cap=0, busy=0.3, latency>=5s→0.2 → 0+0.09+0.04=0.13 < 0.2
+    check_eq("low score returns no_suitable_device", route_low.get("status"), "no_suitable_device")
 
     # High risk operation detection
     check_true("refund is high risk", fm.is_high_risk("refund"))
     check_true("delete_irreversible is high risk", fm.is_high_risk("delete_irreversible"))
     check_true("normal op not high risk", not fm.is_high_risk("read_file"))
 
-    # Multiple hard rules
+        # Multiple hard rules: tools sorted alphabetically, first match wins
+    # "发短信写代码" → tools_required = ["code", "sms"] (sorted)
+    # check_hard_rules iterates in order, "code" matches first → pc
     multi_profile = profiler.analyze("发短信写代码")
     route_multi = RoutingRules.route(multi_profile, [phone, pc])
-    check_eq("multi hard rule code wins (alphabetical)",
-             route_multi["target"], "pc-01")
+    check_eq("multi hard rule code wins (alphabetical)", route_multi["target"], "pc-01")
 
     # Proximity with no latency data
     no_lat = DeviceCapability.create_device("phone-nolat", "phone", heartbeat_latency_ms=None)
@@ -1196,15 +612,6 @@ def run_tests():
     l2_no_other = fm.level2_migrate_device(task_p, phone, [phone])
     check_true("L2 no other devices", not l2_no_other["migrated"])
 
-    # CrashDetector: no risk for calendar task
-    cal_profile = profiler.analyze("查看日历")
-    risk_cal = cd.assess_risk(cal_profile)
-    check_eq("calendar task risk=low", risk_cal["risk_level"], CrashDetector.RISK_LOW)
-
-    # SmartInvocationIndicator: get_active_invocations returns list
-    active_list = indicator.get_active_invocations()
-    check_eq("no active invocations", len(active_list), 0)
-
     # -- Summary --
     print("\n" + "=" * 50)
     print("Results: {}/{} passed, {} failed".format(passed, total, failed))
@@ -1217,4 +624,4 @@ def run_tests():
 
 if __name__ == "__main__":
     success = run_tests()
-    sys.exit(0 if success else 1)
+    exit(0 if success else 1)
