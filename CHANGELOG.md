@@ -2,6 +2,48 @@
 
 所有版本的更新记录。
 
+## v3.1.0 (2026-05-03)
+
+### ✨ 新增
+
+- **自然语言理解（NLU）模块（Module 14）**
+  - 五层理解能力：意图识别、同义词扩展、实体提取、模糊匹配、置信度计算
+  - 正则模板匹配 10 种意图（send_message、make_call、take_photo 等）
+  - 100+ 同义词映射（如"发微信"→sms、"拨号"→call）
+  - 实体提取：人名、时间、地点、内容
+  - 基于 SequenceMatcher 的模糊匹配，支持错别字容错
+  - 综合置信度评分（0-1）
+
+- **SieLogger 日志系统（Module 13）**
+  - 支持 DEBUG/INFO/WARN/ERROR 四级日志
+  - 记录完整调用链路：触发条件 → NLU 解析 → 工具匹配 → 路由决策 → 执行结果
+  - 内存中最多保留 500 条日志，自动清理旧记录
+  - 支持按阶段（phase）和级别（level）过滤查询
+  - 支持按任务 ID 追踪完整执行链路
+  - 支持文件持久化（默认 `~/.sie_logs/` 目录）
+
+- **TaskProfiler v4 NLU 集成（Module 14b）**
+  - TaskProfiler 新增 `__init__` 方法，注入 NLU 模块
+  - `analyze()` 优先使用 NLU 解析，回退到关键词匹配
+  - 输出增加 `nlu` 字段（意图、实体、置信度、匹配方法）
+
+### 🔧 修复
+
+- 修复 `verify_engine.py` 缺少 `from difflib import SequenceMatcher` 导入
+- 修复 NLU `parse()` 返回值缺少 `match_method` 字段
+- 修复测试断言中 `log_error`/`log_warn` 的 phase 参数错误
+- 修复 `sie_engine.py` 正则表达式中的无效转义序列（SyntaxWarning）
+
+### 📊 测试
+
+- 断言从 217 增至 297（+37%）
+- 新增 Module 13（SieLogger）：日志记录、过滤、持久化
+- 新增 Module 14（NaturalLanguageUnderstanding）：意图识别、实体提取、模糊匹配
+- 新增 Module 14b（TaskProfiler v4 NLU 集成）：NLU 与任务分析器的集成测试
+- 完整流水线性能：23.23 μs/op（约 43,000 ops/s）
+
+---
+
 ## v3.0.0 (2026-05-03)
 
 ### ⚡ 性能优化
@@ -31,6 +73,8 @@
 - **RoutingLog**：单次 `datetime.now()` 调用，`del` 切片替代重新赋值清理日志
 - **InvocationIndicator**：`del` 切片替代重新赋值清理历史
 - **TaskProfiler**：可拆分检查 `elif` 提前退出，避免冗余条件判断
+
+---
 
 ## v2.0.0 (2026-05-03)
 
