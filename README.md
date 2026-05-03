@@ -1,194 +1,134 @@
-# 🔀 Smart Task Router
+# 智能调用引擎（Smart Invocation Engine）
 
-**智能任务路由引擎** — 让 AI 助手自动判断任务是否需要跨设备协作，并选择最优设备执行。
+> 多设备协作场景下的智能任务调度技能，自动将任务分配到最优设备执行。
 
----
+## 简介
 
-## 这是什么
+智能调用引擎（SIE）是为小米 AI 助手（MiClaw）设计的多设备协作调度技能。它能分析任务特征、匹配设备能力、评估负载状态，自动做出最优路由决策。
 
-Smart Task Router 是给 MiClaw AI 助手写的"大脑决策模块"。当用户说了一句话，AI 需要快速判断：
+v2.0 在 v1.x 路由引擎基础上，新增三大核心能力：
 
-1. **这件事该在哪做？** — 本机就能搞定，还是需要其他设备帮忙？
-2. **如果需要跨设备，派给谁？** — 手机？电脑？哪一台？
-3. **目标设备忙不忙？** — 空闲直接派，忙了就排队或换一台
-4. **设备挂了怎么办？** — 自动重试、迁移到备选设备
+- 🔀 **智能调用指示器**：每次调用决策产生可见反馈，让你知道引擎在做什么
+- ⚠️ **崩溃风险检测**：电脑端实时监控执行环境，高风险操作自动拆分并通知手机端分步执行
+- 🔗 **双链路通信**：device_chat 主链路 + 网络心跳副链路，确保设备间通信始终可靠
 
-## 解决什么问题
+## 架构
 
-MiClaw 运行在用户的多台设备上（手机、电脑等），每台设备能力不同：
-
-- 手机能发短信、打电话、拍照、定位、定闹钟
-- 电脑能写代码、跑脚本、处理 Office 文档
-
-用户不会说"请用手机的短信功能发送消息"，只会说"帮我发条短信"。AI 需要自动理解意图、匹配设备、做出路由决策。
+```
+┌─────────────────────────────────────────────────┐
+│              智能调用引擎 (SIE v2.0)              │
+├─────────┬──────────┬──────────┬─────────────────┤
+│ 任务分析 │ 路由决策  │ 负载均衡  │ 故障转移        │
+│ Profiler│ Rules    │ Balancer │ Failover        │
+├─────────┴──────────┴──────────┴─────────────────┤
+│ 🔀 智能调用指示器 │ ⚠️ 崩溃风险检测 │ 🔗 双链路通信  │
+├──────────────────┴───────────────┴──────────────┤
+│              设备能力矩阵 + 路由日志               │
+└─────────────────────────────────────────────────┘
+         │                          │
+    ┌────▼────┐              ┌──────▼──────┐
+    │  电脑端  │◄── 主链路 ──►│   手机端     │
+    │ (主节点) │◄── 副链路 ──►│  (协作节点)  │
+    └─────────┘              └─────────────┘
+```
 
 ## 核心模块
 
-### 1. 任务分析器（TaskProfiler）
-
-把用户的自然语言指令解析成结构化特征：
-
-| 分析维度 | 说明 | 示例 |
-|----------|------|------|
-| 工具需求 | 从关键词推断需要哪些工具 | "发短信" → sms |
-| 复杂度 | 轻量/中等/重量 | "写个脚本" → heavy |
-| 紧急度 | 是否需要立即执行 | "马上" → urgent |
-| 可拆分性 | 能否拆成子任务分发 | "然后"连接的多步操作 → true |
-| 环境要求 | 手机端/电脑端/任意 | 含 sms → phone-only |
-
-### 2. 设备能力矩阵（DeviceCapability）
-
-维护每台设备的能力画像：
-
-```
-手机: [sms, call, camera, location, alarm, media, notification]  → 通信能力 0.95
-电脑: [code, ide, office, file, browser, search]                 → 开发能力 0.95
-```
-
-能力匹配分数 = 匹配工具数 / 任务总工具数。
-
-### 3. 路由规则（RoutingRules）
-
-**双层决策架构**：
-
-**硬规则（优先）** — 特定工具直接绑定设备类型，跳过打分：
-
-| 工具 | 强制路由 | 原因 |
-|------|----------|------|
-| sms, call, camera, location, alarm, media | → 手机 | 手机独有能力 |
-| code, ide, office | → 电脑 | 电脑独有能力 |
-
-**软规则（兜底）** — 无硬规则命中时，综合评分：
-
-```
-score = 0.5 × 能力匹配 + 0.3 × 负载因子 + 0.2 × 可达性
-```
-
-### 4. 负载均衡（LoadBalancer）
-
-- 心跳检测：30秒间隔，连续2次失败标记离线
-- 任务队列：普通任务排队，紧急任务直接执行
-- 优先级：urgent=0（立即执行），normal=1（入队等待）
-
-### 5. 故障转移（FailoverMigration）
-
-三级容错机制：
-
-| 级别 | 策略 | 限制 |
+| 模块 | 文件 | 说明 |
 |------|------|------|
-| L1 重试 | 同设备重试 | 最多3次 |
-| L2 迁移 | 换一台设备 | 最多6次 |
-| L3 降级 | 返回部分结果 | 最终兜底 |
+| 任务分析器 | [task-profiler.md](references/task-profiler.md) | 解析任务，提取类型、工具、复杂度、紧急度 |
+| 设备能力矩阵 | [device-capability.md](references/device-capability.md) | 各设备能力画像与评分标准 |
+| 路由规则引擎 | [routing-rules.md](references/routing-rules.md) | 硬规则 + 软规则 + 崩溃风险拦截 |
+| 负载均衡器 | [load-balancer.md](references/load-balancer.md) | 心跳检测、任务队列、负载分配 |
+| 故障转移 | [failover-migration.md](references/failover-migration.md) | 三级迁移策略 + 副链路恢复 |
+| 智能调用指示器 | [invocation-indicator.md](references/invocation-indicator.md) | 调用决策的可见反馈 |
+| 崩溃风险检测 | [crash-detector.md](references/crash-detector.md) | PC端崩溃检测 + 手机端分步通知 |
+| 双链路通信 | [dual-link.md](references/dual-link.md) | 主副链路保活与紧急通知 |
 
-高风险操作（支付、删除不可逆）禁止迁移，防止重复执行。
+## 快速开始
 
-### 6. 路由日志（RoutingLog）
-
-记录每次路由决策：选了哪个设备、为什么、结果如何。自动清理超过100条的旧记录。
-
-## 路由决策流程
+### 路由单个任务
 
 ```
-用户指令
-  ↓
-任务分析（提取工具、复杂度、紧急度）
-  ↓
-硬规则检查（sms→手机, code→电脑）
-  ↓ 命中 → 直接路由
-  ↓ 未命中
-软规则评分（能力 × 0.5 + 负载 × 0.3 + 可达性 × 0.2）
-  ↓
-选择最高分设备（score ≥ 0.2）
-  ↓
-执行 & 监控
-  ↓ 失败
-故障转移（L1重试 → L2迁移 → L3降级）
+请将以下任务路由到最合适的设备：
+任务描述：生成一份包含图表的 Excel 报告
 ```
 
-## 使用示例
+### 批量路由
 
-### 单任务路由
+```
+请将以下 5 个任务分配到最优设备组合：
+1. 生成 PDF 文档
+2. 处理视频文件
+3. 运行数据分析脚本
+4. 设计前端页面
+5. 查询数据库
+```
 
-用户说"帮我发条短信给妈妈"：
+### 查看链路状态
 
-1. TaskProfiler 分析：`tools_required=["sms"]`, `environment="phone-only"`
-2. 硬规则命中：sms → 手机
-3. 检查手机在线状态 → 在线 → 路由到手机
-4. 通过 device_chat 发送任务到手机端执行
-
-### 批量任务分配
-
-用户说"帮我处理这5个任务"：
-
-1. 逐个分析每个任务的工具需求
-2. 计算每台设备的综合评分
-3. 贪心分配：每次把当前最优任务分配给当前最优设备
-4. 输出分配方案
+```
+查看当前设备间的通信链路状态
+```
 
 ## 配置参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| capability_weight | 0.5 | 能力匹配权重 |
-| load_weight | 0.3 | 负载均衡权重 |
-| health_weight | 0.2 | 可达性权重 |
-| max_retries | 3 | L1 最大重试次数 |
-| max_migrations | 6 | L2 最大迁移次数 |
-| migration_timeout_ms | 5000 | 迁移超时 |
-| heartbeat_interval | 30s | 心跳间隔 |
-| offline_threshold | 2 | 离线判定阈值 |
-| MIN_ROUTE_SCORE | 0.2 | 最低路由分数 |
-
-## 文件结构
-
-```
-smart-task-router/
-├── skill.md                  # 技能说明文档
-├── verify_router.py          # 验证脚本（73个断言）
-└── references/
-    ├── task-profiler.md      # 任务分析器详细说明
-    ├── device-capability.md  # 设备能力矩阵详细说明
-    ├── routing-rules.md      # 路由规则详细说明
-    ├── load-balancer.md      # 负载均衡策略详细说明
-    └── failover-migration.md # 故障转移与迁移详细说明
-```
+| `capability_weight` | 0.5 | 能力匹配权重 |
+| `load_weight` | 0.3 | 负载均衡权重 |
+| `health_weight` | 0.2 | 可达性权重 |
+| `max_retries` | 3 | 故障转移最大重试次数 |
+| `max_migrations` | 6 | 总迁移次数上限 |
+| `crash_risk_threshold` | 0.7 | 崩溃风险阈值（超过则拆分） |
+| `dual_link_enabled` | true | 是否启用双链路通信 |
+| `indicator_enabled` | true | 是否启用智能调用指示器 |
+| `network_heartbeat_interval` | 15s | 副链路心跳间隔 |
 
 ## 验证
 
 ```bash
-python verify_router.py
+python verify_engine.py
 ```
 
-73 个断言，覆盖全部 7 个模块（含边界场景）。
+163 个断言，覆盖全部 10 个模块：
 
-## 适用场景
+| 模块 | 测试数 | 说明 |
+|------|--------|------|
+| TaskProfiler | 14 | 任务分析、复杂度、紧急度、可拆分性 |
+| DeviceCapability | 5 | 能力覆盖度、评分计算 |
+| RoutingRules | 13 | 硬规则、软规则、proximity、边界 |
+| LoadBalancer | 8 | 心跳检测、队列管理 |
+| FailoverMigration | 15 | 故障检测、三级迁移、高风险保护 |
+| RoutingLog | 5 | 日志记录、溢出清理 |
+| Edge Cases | 13 | 空工具、低分拦截、多规则冲突 |
+| InvocationIndicator | 23 | 5种指示器类型、历史管理、溢出、禁用 |
+| CrashDetector | 32 | 6种风险因子、综合评估、任务拆分 |
+| DualLink | 35 | 建立/确认、心跳、超时、状态转换、紧急通知 |
 
-- 多设备 AI 助手任务分发
-- 跨设备协作与负载均衡
-- 智能设备能力匹配
-- 故障自动恢复与降级
+## 文件结构
 
-## Changelog
+```
+smart-invocation-engine/
+├── SKILL.md                    # 主文档（技能说明）
+├── README.md                   # 本文件
+├── CHANGELOG.md                # 版本更新记录
+├── verify_engine.py            # 测试验证脚本
+└── references/
+    ├── task-profiler.md        # 任务分析器
+    ├── device-capability.md    # 设备能力矩阵
+    ├── routing-rules.md        # 路由规则引擎
+    ├── load-balancer.md        # 负载均衡器
+    ├── failover-migration.md   # 故障转移机制
+    ├── invocation-indicator.md # 智能调用指示器
+    ├── crash-detector.md       # 崩溃风险检测
+    └── dual-link.md            # 双链路通信
+```
 
-### v1.2.0 (2026-05-02)
-- 新增 RoutingLog 路由决策日志
-- 软规则增加 MIN_ROUTE_SCORE 阈值拦截
-- 测试从 55 增至 73 个断言
+## 版本历史
 
-### v1.1.0 (2026-05-02)
-- proximity 按心跳延迟分级
-- FailoverMigration 独立计数器
-- 硬规则不可迁移保护
+详见 [CHANGELOG.md](CHANGELOG.md)
 
-### v1.0.0 (初始版本)
-- 五大核心模块 + 双层路由架构
+## 许可
 
-## 版本
-
-- 当前版本：v1.2.0
-- 最后更新：2026-05-02
-- 维护者：Miclaw Agent Team
-
-## License
-
-MIT
+MIT License

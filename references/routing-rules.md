@@ -2,7 +2,7 @@
 
 ## 概述
 
-路由规则引擎是整个系统的核心决策层，决定每个任务（或子任务）应该交给哪台设备执行。采用"硬规则兜底 + 软规则打分"的双层架构。
+路由规则引擎是整个系统的核心决策层，决定每个任务（或子任务）应该交给哪台设备执行。采用"硬规则兜底 + 软规则打分 + 崩溃风险拦截"的三层架构。
 
 ## 硬规则（Hard Rules）
 
@@ -42,7 +42,11 @@ route_score = capability_match × 0.5 + load_factor × 0.3 + proximity × 0.2
 
 1. capability_match（能力匹配度）= Σ(capability_scores[t] for t in tools_required) / len(tools_required)
 2. load_factor（负载因子）：idle→1.0, busy→0.3, offline→0.0
-3. proximity（可达性）：online且心跳延迟<2s→1.0, <5s→0.8, >=5s→0.5, offline→0.0
+3. proximity（可达性）：基于双链路状态和心跳延迟
+   - 主链路在线且延迟<2s → 1.0
+   - 主链路在线且延迟<5s → 0.8
+   - 仅副链路可用 → 0.5
+   - 双链路都断开 → 0.0
 
 ### 决策逻辑
 
@@ -68,8 +72,35 @@ def route(task_profile, devices):
     best_device, best_score = scores[0]
     if best_score < MIN_ROUTE_SCORE:
         return {"status": "no_suitable_device", "candidates": scores}
+    # 崩溃风险拦截（v2.0 新增）
+    crash_risk = crash_detector.assess(best_device, task_profile)
+    if crash_risk.score >= CRASH_RISK_THRESHOLD:
+        return {
+            "status": "crash_risk_detected",
+            "target": best_device,
+            "risk_score": crash_risk.score,
+            "action": "split_and_notify"
+        }
     return {"target": best_device, "method": "soft_rule", "score": best_score, "all_scores": scores}
 ```
+
+## 崩溃风险拦截层（v2.0 新增）
+
+在软规则选出最优设备后，增加崩溃风险评估：
+
+```
+软规则选出最优设备 → Crash Detector 评估 →
+  ├── risk_score < 0.3 → 正常路由（绿色指示器）
+  ├── 0.3 ≤ risk_score < 0.7 → 路由但警告（黄色指示器）
+  └── risk_score ≥ 0.7 → 拆分并通知手机端（红色指示器）
+```
+
+### 拦截后的处理
+
+1. 生成拆分后的子任务列表
+2. 通过副链路通知手机端
+3. 手机端接管调度，逐步向电脑端分发子任务
+4. 电脑端每次只处理一个子任务，降低崩溃风险
 
 ## 协作规则（Collaboration Rules）
 
@@ -96,7 +127,9 @@ def route(task_profile, devices):
   "decision": [
     {"sub_task_id": "ST-1", "target_device": "phone-01", "method": "hard_rule", "rule_id": "H-001", "reason": "sms→phone", "score": null},
     {"sub_task_id": "ST-2", "target_device": "pc-01", "method": "soft_rule", "rule_id": null, "reason": "file能力pc更强(score=0.88)", "score": 0.88}
-  ]
+  ],
+  "crash_risk": {"score": 0.15, "action": "none"},
+  "indicator": {"type": "route_decision", "icon": "🖥️", "title": "智能调用 → 电脑端"}
 }
 ```
 
@@ -106,3 +139,4 @@ def route(task_profile, devices):
 - 同一任务的子任务尽量少跨设备（减少协调开销）
 - 路由决策延迟不超过 500ms（避免用户等待过久）
 - 路由日志保留最近 100 条，超过自动清理旧记录
+- 崩溃风险日志保留最近 200 条
