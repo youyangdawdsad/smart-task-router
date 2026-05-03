@@ -2,6 +2,69 @@
 
 所有版本的更新记录。
 
+## v3.4.0 (2026-05-04)
+
+### ✨ 新增
+
+- **路由结果 LRU 缓存（RouteCache）**
+  - 相同或相似的用户输入（哈希或语义相似度 > 0.9）直接返回上次的路由结果
+  - 缓存有效期 5 分钟，过期后重新计算
+  - 缓存命中时跳过 NLU，直接执行路由结果
+  - 缓存容量 200 条，LRU 淘汰策略
+  - nlu_config.json 更新后自动清空缓存
+
+- **批量自学习（Batch Learn）**
+  - 未知意图不再逐条请教，攒够 3-5 个后一次性发给大爱
+  - 减少 device_coord 调用次数，降低超时风险
+  - 批量请求/回复协议：batch_learn_request / batch_learn_response
+  - 交互式学习模式支持 batch/send 命令
+
+- **本地兜底日志（LocalFallbackLogger）**
+  - device_coord 不通时，未知意图自动记录到 pending_learn.jsonl
+  - 连接恢复后可批量读取并请教
+  - 支持标记已解决、清理已解决记录
+
+- **路由简化 — SIE 不做设备选择**
+  - SIE 只做意图识别和任务拆分，输出 needs_cross_device 标记
+  - 设备选择完全交给 miclaw device_coord（它有实时设备状态）
+  - 硬规则改为标记设备类型偏好，不再直接指定设备
+
+- **心跳检测复用 miclaw device_list**
+  - 不再自己实现心跳协议，直接复用 miclaw 的设备发现
+  - 启动时调一次 device_list 获取设备状态
+
+- **learn_request 超时调整**
+  - 从默认值改为 30 秒（给手机端更多处理时间）
+
+### 🔧 变更
+
+- **nlu_config.json 结构升级**
+  - 新增 batch_learn 配置区域（enabled, threshold, max_pending, learn_request_timeout_seconds, local_fallback_enabled, local_fallback_path）
+  - 新增 route_cache 配置区域（enabled, ttl_seconds, max_size, similarity_threshold）
+  - 版本号升级至 3.4.0
+
+- **sie_self_evolve.py 重构**
+  - 新增 RouteCache 类（LRU 缓存 + 相似度匹配）
+  - 新增 LocalFallbackLogger 类（本地兜底日志）
+  - UnknownIntentHandler 升级为批量模式（threshold + batch_buffer）
+  - LearnProtocol 新增 create_batch_request / validate_batch_response
+  - SelfEvolvingNLU.parse() 先查缓存再走 NLU
+  - SelfEvolvingNLU 新增 apply_batch_learn_response / create_batch_learn_request
+
+### 📊 测试
+
+- sie_evolve_test：原有 14 场景 107 项检查仍通过
+- 新增 RouteCache 测试：缓存命中、过期、相似度匹配、LRU 淘汰
+- 新增 LocalFallbackLogger 测试：记录、读取、标记解决
+- 新增批量学习测试：攒批、批量请求创建、批量回复应用
+
+### 📝 文档
+
+- 更新 skill.md 至 v3.4.0，新增路由缓存、批量学习、本地兜底章节
+- 更新 CHANGELOG.md
+
+---
+
 ## v3.3.0 (2026-05-04)
 
 ### ✨ 新增

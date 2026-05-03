@@ -2,7 +2,7 @@
 
 根据任务类型、设备能力、负载状态，自动将任务分配到最优设备执行。当检测到执行风险时，智能拆分任务并通知协作设备分步处理。
 
-**版本**: 3.3.0
+**版本**: 3.4.0
 **前置条件**: 至少2台设备在线（通过 device_chat 协议注册，或自动发现）
 
 ## 概述
@@ -11,30 +11,34 @@
 
 1. **NLU 配置驱动**：意图识别完全由 `nlu_config.json` 外部配置驱动，支持 27 个意图，每个意图 4-12 个关键词 + 正则 patterns，新增/修改意图只需编辑配置文件
 2. **AI 语义理解（NLUClassifier）**：NLU 从关键词匹配升级到 AI 语义理解，关键词匹配作为快速通道，AI 语义理解作为 fallback，大幅提升识别准确率
-3. **自我进化架构（SelfEvolvingNLU）**：未知意图自动捕获 → 生成请教请求 → 接收教学回复 → 自动更新配置，实现 NLU 的持续进化
+3. **自我进化架构（SelfEvolvingNLU）**：未知意图自动捕获 → 批量缓存 → 一次性请教 → 自动更新配置，实现 NLU 的持续进化
 4. **全链路日志（SieLogger）**：记录完整调用链路（触发→NLU→匹配→路由→执行），支持四级日志、按任务 ID 追踪、文件持久化
 5. **智能调用指示器**：每次智能调用决策时，生成可见的执行指示，让用户实时感知引擎的工作状态
 6. **崩溃风险检测**：电脑端实时监控执行环境，当检测到可能导致崩溃的操作时，自动通知手机端将任务拆分为更小的步骤分步执行
 7. **双链路通信**：在 device_chat 主链路之外，新增网络心跳副链路，确保设备间通信始终可用
 8. **自动设备注册**：新设备登录账号后自动发现、探测能力、接入引擎，无需手动配置
 9. **MCP 服务集成**：支持接入第三方 MCP 服务（如 mcd-mcp、高德地图、天气查询等），扩展引擎能力边界
+10. **路由结果缓存（LRU Cache）**：相同或相似的用户输入直接返回上次的路由结果，跳过 NLU 重新计算，缓存有效期 5 分钟
+11. **批量自学习 + 本地兜底**：未知意图攒够 3-5 个后一次性请教，device_coord 不通时记录到本地日志，连接恢复后批量请教
 
 ## 核心能力
 
 1. **自然语言理解（NLU）**：基于 `nlu_config.json` 配置驱动的意图识别，支持 27 个意图、正则模式匹配、关键词匹配、模糊匹配
 2. **AI 语义理解（NLUClassifier）**：关键词快速通道无法匹配时，fallback 到 AI 语义理解，通过大模型进行意图分类
-3. **自我进化架构（SelfEvolvingNLU）**：未知意图自动捕获、知识请教协议（LearnProtocol）、自动配置更新
+3. **自我进化架构（SelfEvolvingNLU）**：未知意图批量捕获、知识请教协议（LearnProtocol）、自动配置更新、本地兜底日志
 4. **全链路日志（SieLogger）**：记录每次调用的触发条件、匹配结果、执行过程和最终输出
 5. **任务分析（Task Profiling）**：解析任务描述，提取任务类型、所需工具、资源需求、优先级等特征
 6. **设备能力匹配（Device Capability Matching）**：维护各设备的能力画像，包括硬件配置、已安装工具、网络状态等
-7. **路由决策（Routing Decision）**：综合任务特征和设备能力，选择最优执行设备
+7. **路由决策（Routing Decision）**：综合任务特征和设备能力，输出意图→工具映射，设备选择完全交给 miclaw device_coord
 8. **负载均衡（Load Balancing）**：避免单设备过载，合理分配任务到多设备
 9. **故障转移（Failover & Migration）**：设备离线或执行失败时，自动迁移到备选设备
 10. **智能调用指示器（Invocation Indicator）**：每次调用决策产生可见反馈，让用户知道引擎在工作
 11. **崩溃风险检测（Crash Detector）**：监控执行环境，高风险操作自动拆分并通知协作设备
-12. **双链路通信（Dual Link）**：主链路（device_chat）+ 副链路（网络心跳），确保通信可靠
+12. **双链路通信（Dual Link）**：主链路（device_chat）+ 副链路（复用 miclaw 设备发现），确保通信可靠
 13. **自动设备注册（Auto Device Registration）**：新设备自动发现、能力探测、动态注册
 14. **MCP 服务集成**：通过 MCP 协议接入第三方服务，扩展能力边界
+15. **路由结果缓存（LRU Cache）**：相同/相似输入跳过 NLU，直接返回缓存的路由结果（5 分钟有效期）
+16. **批量自学习 + 本地兜底**：未知意图攒批后一次性请教，device_coord 不通时本地记录，恢复后批量请教
 
 ## 使用方式
 
@@ -94,47 +98,47 @@
 ## 路由决策流程
 
 ```
-任务输入 → 关键词快速通道 → AI 语义理解 fallback → 自动设备注册 → 任务分析 → 设备能力匹配 → 负载评估 → 故障检查 → 崩溃风险评估 → 路由决策 → 指示器输出 → 任务分发 → 语音通知
+任务输入 → LRU 缓存检查 → 关键词快速通道 → AI 语义理解 fallback → 自动设备注册 → 任务分析 → 意图→工具映射 → 是否需要跨设备 → device_coord（miclaw 自动选设备）→ 指示器输出 → 任务分发 → 语音通知
 ```
 
 ### 详细步骤
 
-1. **关键词快速通道**：基于 `nlu_config.json` 配置驱动的快速匹配
+1. **LRU 缓存检查**：对用户输入计算哈希，检查路由缓存（5 分钟有效期）
+   - 缓存命中（哈希相同或语义相似度 > 0.9）→ 跳过 NLU，直接返回缓存的路由结果
+   - 缓存未命中 → 继续后续流程
+2. **关键词快速通道**：基于 `nlu_config.json` 配置驱动的快速匹配
    - 正则模式匹配（最高优先级，置信度 0.95）
    - 关键词匹配（置信度最高 0.9）
    - 模糊匹配：SequenceMatcher 相似度计算（阈值 0.6）
    - 置信度计算：综合评分 0-1
    - 支持 27 个意图，每个意图 4-12 个关键词 + 正则 patterns
-2. **AI 语义理解 fallback**：当关键词快速通道无法匹配（confidence < 0.3）时
+3. **AI 语义理解 fallback**：当关键词快速通道无法匹配（confidence < 0.3）时
    - NLUClassifier 调用大模型进行意图分类
    - 从 27 个意图中选择最佳匹配
    - 返回意图名称、置信度、提取的实体
-3. **自动设备注册**：检查是否有新设备上线，自动探测能力并注册
-4. **任务分析**：调用 Task Profiler 提取任务特征向量（优先使用 NLU 解析结果，回退到关键词匹配）
-5. **能力匹配**：将任务特征与各设备能力画像进行匹配，计算匹配分数
-6. **负载评估**：查询各设备当前负载，计算可用容量
-7. **故障检查**：确认目标设备在线且健康（双链路任一可用即可）
-8. **崩溃风险评估**：对目标设备执行 Crash Detector 风险扫描
-9. **综合评分**：`score = α × capability_match + β × load_factor + γ × proximity`
-   - `α = 0.5`（能力匹配权重）
-   - `β = 0.3`（负载均衡权重）
-   - `γ = 0.2`（可达性权重，基于心跳延迟分级：<2s→1.0, <5s→0.8, ≥5s→0.5）
-10. **路由决策**：选择综合评分最高的设备
-11. **指示器输出**：生成 Invocation Indicator，展示决策结果
-12. **任务分发**：通过主链路（device_chat）分发任务
-13. **语音通知**：任务完成后，选择最佳语音设备播报结果
+4. **自动设备注册**：检查是否有新设备上线，自动探测能力并注册
+5. **任务分析**：调用 Task Profiler 提取任务特征向量（优先使用 NLU 解析结果，回退到关键词匹配）
+6. **意图→工具映射**：根据 NLU 结果确定所需工具和是否需要跨设备
+7. **设备选择**：**SIE 不做设备选择**，只输出 `needs_cross_device: true/false`
+   - 如果需要跨设备 → 交给 miclaw device_coord（它有实时设备状态）
+   - 如果本机可执行 → 直接执行
+8. **指示器输出**：生成 Invocation Indicator，展示决策结果
+9. **任务分发**：通过主链路（device_chat）分发任务
+10. **语音通知**：任务完成后，选择最佳语音设备播报结果
 
 ### 硬规则优先
 
-当任务涉及以下工具时，直接路由到对应设备类型，跳过打分：
+当任务涉及以下工具时，直接标记目标设备类型，跳过打分：
 - **手机端**：sms, call, camera, location, alarm, media, screenshot
 - **电脑端**：code, ide, office
+
+> **v3.4.0 变更**：硬规则不再直接指定设备，而是标记设备类型偏好，最终设备选择仍由 miclaw device_coord 决定
 
 ### 崩溃风险拦截
 
 当 Crash Detector 判定目标设备存在崩溃风险时：
 1. 自动将任务拆分为更小的子任务
-2. 通过副链路通知手机端
+2. 通过 device_chat 通知手机端
 3. 手机端接收后分步调度执行
 
 ### 自动设备注册
@@ -155,7 +159,7 @@
 
 ## 自我进化架构
 
-SIE v3.3.0 引入自我进化架构，使 NLU 能够持续学习和扩展。
+SIE v3.4.0 优化自我进化架构，从逐条请教改为批量模式，增加本地兜底机制。
 
 ### 核心组件
 
@@ -163,50 +167,89 @@ SIE v3.3.0 引入自我进化架构，使 NLU 能够持续学习和扩展。
 |------|------|
 | `SelfEvolvingNLU` | 核心入口，包装现有 NLU，添加进化能力 |
 | `LearnProtocol` | 标准化的知识请教协议（learn_request / learn_response） |
-| `UnknownIntentHandler` | 未知意图捕获与管理 |
+| `UnknownIntentHandler` | 未知意图批量捕获与管理（攒够 3-5 个后一次性请教） |
 | `AutoConfigUpdater` | 自动将新学到的意图写入 nlu_config.json |
 | `LearningLogger` | 学习过程日志记录 |
+| `LocalFallbackLogger` | device_coord 不通时的本地兜底日志 |
+| `RouteCache` | LRU 路由结果缓存（5 分钟有效期） |
 
-### 请教协议格式
+### 批量请教协议格式
 
-**请求格式**（SIE → 大爱）：
+**批量请求格式**（SIE → 大爱）：
 ```json
 {
-  "type": "learn_request",
-  "request_id": "LR-20260504-001",
-  "input": "用户说的话",
-  "context": "当时的上下文",
-  "question": "这个意图应该映射到什么工具？关键词有哪些？",
+  "type": "batch_learn_request",
+  "request_id": "BLR-20260504-001",
+  "items": [
+    {
+      "input": "用户说的话1",
+      "context": "当时的上下文",
+      "capture_count": 3
+    },
+    {
+      "input": "用户说的话2",
+      "context": "",
+      "capture_count": 1
+    }
+  ],
+  "question": "这些意图应该映射到什么工具？关键词有哪些？",
   "timestamp": "2026-05-04T00:14:00"
 }
 ```
 
-**回复格式**（大爱 → SIE）：
+**批量回复格式**（大爱 → SIE）：
 ```json
 {
-  "type": "learn_response",
-  "request_id": "LR-20260504-001",
-  "intent": "新意图名",
-  "description": "意图描述",
-  "keywords": ["关键词列表"],
-  "patterns": ["正则模式"],
-  "tool": "对应工具",
-  "device": "目标设备",
-  "examples": ["示例语句"]
+  "type": "batch_learn_response",
+  "request_id": "BLR-20260504-001",
+  "results": [
+    {
+      "input": "用户说的话1",
+      "intent": "新意图名",
+      "description": "意图描述",
+      "keywords": ["关键词列表"],
+      "patterns": ["正则模式"],
+      "tool": "对应工具",
+      "device": "目标设备",
+      "examples": ["示例语句"]
+    }
+  ]
 }
 ```
 
-### 进化流程
+### 进化流程（v3.4.0 批量模式）
 
 ```
-用户输入 → NLU 解析 → 未知意图？ → 捕获 → 生成 learn_request → 发送给大爱
-                                                                    ↓
-验证学习效果 ← 重新加载 NLU ← 自动更新配置 ← 收到 learn_response
+用户输入 → NLU 解析 → 未知意图？ → 捕获并缓存到本地
+                                        ↓
+                              攒够 3-5 个？ → 是 → 生成 batch_learn_request → 发送给大爱
+                                        ↓ 否                                    ↓
+                              继续等待下一个未知意图        验证学习效果 ← 重新加载 NLU ← 自动更新配置 ← 收到 batch_learn_response
+
+device_coord 不通？ → 记录到本地日志（.sie_logs/pending_learn.jsonl）→ 连接恢复后批量请教
 ```
+
+## 路由结果缓存（v3.4.0 新增）
+
+SIE v3.4.0 引入 LRU 缓存，避免相同输入重复走 NLU + 路由打分。
+
+### 缓存策略
+
+- **缓存键**：用户输入的哈希值（MD5）
+- **相似度匹配**：语义相似度 > 0.9 的输入视为相同（SequenceMatcher）
+- **有效期**：5 分钟，过期后重新计算
+- **缓存容量**：最多 200 条路由结果
+- **缓存命中时**：跳过 NLU，直接返回上次的路由结果
+
+### 缓存失效
+
+- 超过 5 分钟自动失效
+- nlu_config.json 更新后清空缓存（配置变更可能导致路由变化）
+- 手动调用 `clear_cache()` 清空
 
 ## 语义理解
 
-v3.3.0 将 NLU 从纯关键词匹配升级为 AI 语义理解。
+v3.4.0 将 NLU 从纯关键词匹配升级为 AI 语义理解。
 
 ### 双层匹配架构
 
@@ -266,13 +309,11 @@ MCP 服务通过 `nlu_config.json` 中的 `mcp_services` 字段配置：
 | `max_retries` | 3 | 故障转移最大重试次数 |
 | `max_migrations` | 6 | 总迁移次数上限 |
 | `migration_timeout_ms` | 5000 | 任务迁移超时时间 |
-| `heartbeat_interval` | 30s | 心跳检测间隔 |
+| `heartbeat_interval` | 30s | 心跳检测间隔（复用 miclaw device_list） |
 | `offline_threshold` | 2 | 连续心跳失败次数触发离线 |
 | `crash_risk_threshold` | 0.7 | 崩溃风险阈值（0-1，超过则触发拆分） |
 | `dual_link_enabled` | true | 是否启用双链路通信 |
 | `indicator_enabled` | true | 是否启用智能调用指示器 |
-| `network_heartbeat_interval` | 15s | 副链路网络心跳间隔 |
-| `network_heartbeat_timeout` | 5s | 副链路心跳超时 |
 | `auto_discovery_enabled` | true | 是否启用自动设备发现 |
 | `discovery_interval` | 60s | 设备发现检查间隔 |
 | `probe_timeout` | 10s | 能力探测超时 |
@@ -287,6 +328,16 @@ MCP 服务通过 `nlu_config.json` 中的 `mcp_services` 字段配置：
 | `logger_enabled` | true | 是否启用全链路日志 |
 | `logger_max_entries` | 500 | 日志最大保留条数 |
 | `logger_persist_dir` | ~/.sie_logs/ | 日志持久化目录 |
+| `route_cache_enabled` | true | 是否启用路由结果 LRU 缓存 |
+| `route_cache_ttl_seconds` | 300 | 路由缓存有效期（秒，默认 5 分钟） |
+| `route_cache_max_size` | 200 | 路由缓存最大条数 |
+| `route_cache_similarity_threshold` | 0.9 | 语义相似度阈值（超过视为相同输入） |
+| `batch_learn_enabled` | true | 是否启用批量自学习 |
+| `batch_learn_threshold` | 3 | 攒够多少个未知意图后一次性请教 |
+| `batch_learn_max_pending` | 10 | 最大缓存未知意图数（超过丢弃最旧） |
+| `learn_request_timeout_seconds` | 30 | 请教请求超时时间（秒） |
+| `local_fallback_enabled` | true | device_coord 不通时是否记录本地兜底日志 |
+| `local_fallback_path` | ~/.sie_logs/pending_learn.jsonl | 本地兜底日志路径 |
 
 ## 参考文档
 
@@ -320,6 +371,16 @@ python sie_evolve_test.py
 ```
 
 ## Changelog
+
+### v3.4.0 (2026-05-04)
+- feat: 路由结果 LRU 缓存 — 相同/相似输入跳过 NLU，5 分钟有效期，最多 200 条
+- feat: 批量自学习 — 未知意图攒够 3-5 个后一次性请教，减少 device_coord 调用次数
+- feat: 本地兜底日志 — device_coord 不通时记录到 pending_learn.jsonl，连接恢复后批量请教
+- feat: 路由简化 — SIE 不做设备选择，只做意图识别和任务拆分，设备选择交给 miclaw device_coord
+- feat: 心跳检测复用 miclaw device_list — 不再自己实现心跳协议
+- feat: learn_request 超时从默认值改为 30 秒
+- refactor: nlu_config.json 新增 batch_learn 和 route_cache 配置项
+- docs: 更新 skill.md 至 v3.4.0
 
 ### v3.3.0 (2026-05-04)
 - feat: NLU 从关键词匹配升级为 AI 语义理解（NLUClassifier）

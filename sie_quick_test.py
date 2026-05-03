@@ -101,7 +101,7 @@ def run_tests():
     # 1. 配置文件完整性检查
     # ============================================================
     print("\n[1] 配置文件完整性检查")
-    check("version is 3.3.0", config.get("version") == "3.3.0")
+    check("version is 3.4.0", config.get("version") == "3.4.0")
     check("has description", bool(config.get("description")))
     check("has intents", len(config.get("intents", {})) > 0)
     check("has cross_device_keywords", len(config.get("cross_device_keywords", [])) > 0)

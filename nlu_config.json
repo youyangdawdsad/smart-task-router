@@ -1,6 +1,6 @@
 {
-  "version": "3.3.0",
-  "description": "SIE NLU 配置 — 意图识别关键词表（v3.3.0 双层匹配 + 自我进化）",
+  "version": "3.4.0",
+  "description": "SIE NLU 配置 — 意图识别关键词表（v3.4.0 批量学习 + 路由缓存）",
   "intents": {
     "message_send": {
       "description": "发送短信",
@@ -739,5 +739,19 @@
         "booking"
       ]
     }
+  },
+  "batch_learn": {
+    "enabled": true,
+    "threshold": 3,
+    "max_pending": 10,
+    "learn_request_timeout_seconds": 30,
+    "local_fallback_enabled": true,
+    "local_fallback_path": "~/.sie_logs/pending_learn.jsonl"
+  },
+  "route_cache": {
+    "enabled": true,
+    "ttl_seconds": 300,
+    "max_size": 200,
+    "similarity_threshold": 0.9
   }
 }
